@@ -1,0 +1,250 @@
+# rapidraw-web release. Tag = rapidraw-v<RapidRAW>-web-v<web> (npr. rapidraw-v1.6.4-web-v1.2.0),
+# kreira ga rrweb-sync.yml (nova web verzija u rrweb/VERSION ili novi RapidRAW release).
+# Paketi: verzija <RapidRAW>+web.<web> (rrweb/version.mjs); fajlovi: <tag>_<os>_<arch>.<ext>.
+# Ručno: s tagom = ponovni build i objava tog releasea; bez taga = probni build odabrane grane BEZ objave
+# (paketi ostaju kao artefakti runa), npr. za provjeru nove platforme prije releasea.
+name: rapidraw-web release
+
+on:
+  push:
+    tags: ['rapidraw-v*-web-v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Postojeći tag za ponovni build i objavu (npr. rapidraw-v1.6.4-web-v1.2.0). Prazno = probni build bez objave.'
+        required: false
+
+permissions:
+  contents: write
+  issues: write
+
+env:
+  TAG: ${{ github.event.inputs.tag || (github.event_name == 'push' && github.ref_name) || '' }}
+  REF: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  # Folder s klijentskog računala "na zahtjev" (Linux: FUSE, Windows: WinFsp): mala Rust binarka za server bundle
+  fuse:
+    name: rrweb-fuse ${{ matrix.os }} ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-22.04, os: linux, arch: x86_64, exe: '' }      # starija glibc → radi i na novijim distribucijama
+          - { runner: ubuntu-22.04-arm, os: linux, arch: aarch64, exe: '' }
+          - { runner: windows-latest, os: windows, arch: x86_64, exe: .exe }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ env.REF }}' }
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --release --manifest-path rrweb/fuse/Cargo.toml
+      - uses: actions/upload-artifact@v4
+        with: { name: 'fuse-${{ matrix.os }}-${{ matrix.arch }}', path: 'rrweb/fuse/target/release/rrweb-fuse${{ matrix.exe }}' }
+
+  server:
+    name: Server bundle (web UI + relay)
+    needs: fuse
+    if: ${{ !cancelled() }}   # bez rrweb-fuse bundle i dalje radi, samo bez načina "na zahtjev"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ env.REF }}' }
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: npm }
+      - name: Version
+        run: if [ -n "$TAG" ]; then node rrweb/version.mjs --check "$TAG"; else echo "TAG=$(node rrweb/version.mjs)" >> "$GITHUB_ENV"; fi
+      - run: node rrweb/check-shims.mjs
+      - run: npm ci --no-audit --no-fund
+      - run: npx vite build --config rrweb/vite.web.config.mjs
+      - run: npm ci --omit=dev --no-audit --no-fund
+        working-directory: rrweb/relay
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with: { pattern: 'fuse-*', path: fuse-dl }
+      - name: Package
+        run: |
+          mkdir -p "out/$TAG"
+          cp -r rrweb/dist-web rrweb/relay rrweb/run.sh rrweb/run.ps1 rrweb/README.md LICENSE "out/$TAG/"
+          chmod +x "out/$TAG/run.sh"
+          for a in x86_64 aarch64; do   # artefakti ne čuvaju exec bit
+            for f in "fuse-dl/fuse-linux-$a/rrweb-fuse" "fuse-dl/fuse-windows-$a/rrweb-fuse.exe"; do
+              [ -f "$f" ] && mkdir -p "out/$TAG/fuse/$a" && install -m 755 "$f" "out/$TAG/fuse/$a/"
+            done
+          done
+          tar -C out -czf "${TAG}_linux_server.tar.gz" "$TAG"
+      - uses: actions/upload-artifact@v4
+        with: { name: server, path: '*_linux_server.tar.gz' }
+
+  bridge-linux:
+    name: Bridge Linux ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-22.04, arch: x64 }
+          - { runner: ubuntu-22.04-arm, arch: arm64 }
+    runs-on: ${{ matrix.runner }}
+    env:
+      APPIMAGE_EXTRACT_AND_RUN: 1
+      NO_STRIP: true   # kao upstream build.yml: linuxdeploy-ov strip ne zna nove ELF sekcije
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ env.REF }}' }
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: rrweb-${{ matrix.runner }}
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: npm }
+      - name: System deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf pkg-config xdg-utils
+      - run: npm ci --no-audit --no-fund
+      # all-in-one kao na Windowsu/macOS-u: ugrađeni Node.js + relay + web UI + rrweb-fuse, systemd user servis
+      - run: npx vite build --config rrweb/vite.web.config.mjs
+      - run: npm ci --omit=dev --no-audit --no-fund
+        working-directory: rrweb/relay
+      - run: cargo build --release --manifest-path rrweb/fuse/Cargo.toml
+      - run: node rrweb/bundle/prepare.mjs
+      - name: Version
+        run: if [ -n "$TAG" ]; then node rrweb/version.mjs --check "$TAG"; else node rrweb/version.mjs; fi
+      - run: npx tauri build --bundles deb,rpm,appimage --config rrweb/tauri.bridge.json --config rrweb/tauri.version.json --config rrweb/bundle/tauri.bundle.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bridge-linux-${{ matrix.arch }}
+          path: |
+            src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/rpm/*.rpm
+            src-tauri/target/release/bundle/appimage/*.AppImage
+
+  # Windows i macOS: all-in-one (bridge sam pokreće ugrađeni relay: Node.js + relay + web UI, rrweb/bundle/prepare.mjs);
+  # Linux paketi isto (gore), server bundle ostaje za Docker i ručno pokretanje s run.sh
+  bridge-windows:
+    name: Bridge Windows x64 (all-in-one)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ env.REF }}' }
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: src-tauri, key: rrweb-windows }
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: npm }
+      - run: npm ci --no-audit --no-fund
+      - run: npx vite build --config rrweb/vite.web.config.mjs
+      - run: npm ci --omit=dev --no-audit --no-fund
+        working-directory: rrweb/relay
+      - run: cargo build --release --manifest-path rrweb/fuse/Cargo.toml   # "na zahtjev" preko WinFsp-a
+      - run: node rrweb/bundle/prepare.mjs
+      - name: Version
+        shell: bash
+        run: if [ -n "$TAG" ]; then node rrweb/version.mjs --check "$TAG"; else node rrweb/version.mjs; fi
+      - run: npx tauri build --bundles nsis --config rrweb/tauri.bridge.json --config rrweb/tauri.version.json --config rrweb/bundle/tauri.bundle.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bridge-windows-x64
+          path: src-tauri/target/release/bundle/nsis/*.exe
+
+  bridge-macos:
+    name: Bridge macOS ${{ matrix.arch }} (all-in-one)
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: macos-14, arch: arm64 }        # Apple Silicon
+          - { runner: macos-15-intel, arch: x64 }    # Intel (kao upstream release.yml)
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ env.REF }}' }
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: rrweb-${{ matrix.runner }}
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: npm }
+      - run: npm ci --no-audit --no-fund
+      - run: npx vite build --config rrweb/vite.web.config.mjs
+      - run: npm ci --omit=dev --no-audit --no-fund
+        working-directory: rrweb/relay
+      - run: node rrweb/bundle/prepare.mjs
+      - name: Version
+        run: if [ -n "$TAG" ]; then node rrweb/version.mjs --check "$TAG"; else node rrweb/version.mjs; fi
+      # hdiutil na GitHubovim macOS runnerima povremeno padne ("bundle_dmg.sh"): drugi pokušaj samo ponovno pakira
+      - run: |
+          for i in 1 2; do
+            npx tauri build --bundles dmg --config rrweb/tauri.bridge.json --config rrweb/tauri.version.json --config rrweb/bundle/tauri.bundle.json && exit 0
+            echo "::warning::DMG bundling failed (attempt $i)"; sleep 15
+          done
+          exit 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bridge-macos-${{ matrix.arch }}
+          path: src-tauri/target/release/bundle/dmg/*.dmg
+
+  release:
+    needs: [fuse, server, bridge-linux, bridge-windows, bridge-macos]
+    if: ${{ !cancelled() && needs.server.result == 'success' && (github.event_name == 'push' || inputs.tag != '') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ env.TAG }}', fetch-depth: 0 }   # povijest + origin/main za popis promjena
+      - uses: actions/download-artifact@v4
+        with: { path: dist, merge-multiple: true }
+      - name: Release notes
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          node rrweb/release-notes.mjs "$TAG" > notes.md
+          missing=""
+          [ "${{ needs.bridge-linux.result }}" = success ] || missing="$missing Linux"
+          [ "${{ needs.bridge-windows.result }}" = success ] || missing="$missing Windows"
+          [ "${{ needs.bridge-macos.result }}" = success ] || missing="$missing macOS"
+          [ "${{ needs.fuse.result }}" = success ] || missing="$missing rrweb-fuse(on-demand folders in the server bundle)"
+          [ -n "$missing" ] && printf '\n> ⚠️ Build failed for:%s — not included in this release.\n' "$missing" >> notes.md
+          # Linux artifakti zadržavaju deb/, rpm/, appimage/ poddirektorije, a files: dist/* ih ne vidi
+          find dist -mindepth 2 -type f -exec mv -t dist {} +
+          find dist -mindepth 1 -type d -empty -delete
+          # <tag>_<os>_<arch>.<ext>: rapidraw-v1.6.4-web-v1.2.0_linux_x64.deb, …_macos_arm64.dmg, …_windows_x64-setup.exe
+          for f in dist/*; do
+            b=$(basename "$f")
+            case "$b" in
+              *.deb)       a=${b##*_}; a=${a%.deb} ;;
+              *.rpm)       a=${b%.rpm}; a=${a##*.} ;;
+              *.AppImage)  a=${b%.AppImage}; a=${a##*_} ;;
+              *.dmg)       a=${b%.dmg}; a=${a##*_} ;;
+              *-setup.exe) a=x64 ;;
+              rrweb-fuse|rrweb-fuse.exe) rm "$f"; continue ;;   # već je u server bundleu (fuse/<arch>/)
+              *) continue ;;
+            esac
+            case "$a" in amd64|x86_64|x64) a=x64 ;; arm64|aarch64) a=arm64 ;; esac
+            case "$b" in
+              *.dmg)       n="${TAG}_macos_${a}.dmg" ;;
+              *-setup.exe) n="${TAG}_windows_${a}-setup.exe" ;;
+              *)           n="${TAG}_linux_${a}.${b##*.}" ;;
+            esac
+            mv "$f" "dist/$n"
+          done
+          ls -la dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: ${{ env.TAG }}
+          body_path: notes.md
+          files: dist/*
+          make_latest: true
+
+  report-failure:
+    needs: [fuse, server, bridge-linux, bridge-windows, bridge-macos, release]
+    if: ${{ failure() && (github.event_name == 'push' || inputs.tag != '') }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          gh issue create -R "$GITHUB_REPOSITORY" \
+            -t "Release $TAG: build nije uspio" \
+            -b "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+        env: { GH_TOKEN: '${{ github.token }}' }
