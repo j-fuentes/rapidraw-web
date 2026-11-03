@@ -74,6 +74,19 @@ imgref = "1.12.2"
 sysinfo = "0.39.6"
 tauri-plugin-http = "2.8.0"
 tauri-plugin-store = "2.5.0"
+# HEIC/HEIF (fork j-fuentes): native OS HEVC decoders first, pure-Rust
+# decoder (backend-rust) as fallback where the native one is missing
+# (e.g. Linux without VA-API, Android devices without HEVC MediaCodec).
+heic = { git = "https://github.com/imazen/heic.git", rev = "dbf35c02b349f108e06f99a7f459b7e6a5299173", default-features = false, features = [
+    "std",
+    "parallel",
+    "backend-rust",
+    "backend-videotoolbox",
+    "backend-mediafoundation",
+    "backend-d3d11va",
+    "backend-vaapi",
+    "backend-mediacodec",
+] }
 
 [target.'cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))'.dependencies]
 trash = "5.2.6"
