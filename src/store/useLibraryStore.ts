@@ -44,6 +44,8 @@ interface LibraryState {
   selectionAnchorPath: string | null;
   libraryActivePath: string | null;
   libraryActiveAdjustments: Adjustments;
+  // Immich stacks shown expanded: library entry → paths of its other files
+  expandedImmichStacks: Record<string, string[]>;
 
   // Sorting & Filtering
   sortCriteria: SortCriteria;
@@ -88,6 +90,7 @@ export const useLibraryStore = create<LibraryState>((set) => ({
   selectionAnchorPath: null,
   libraryActivePath: null,
   libraryActiveAdjustments: INITIAL_ADJUSTMENTS,
+  expandedImmichStacks: {},
 
   sortCriteria: { key: 'name', order: SortDirection.Ascending },
   filterCriteria: { colors: [], rating: 0, rawStatus: RawStatus.All },

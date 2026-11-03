@@ -999,6 +999,8 @@ const Row = React.memo(
             isEdited={image.is_edited}
             aspectRatio={thumbnailAspectRatio}
             isCloudPlaceholder={image.is_cloud_placeholder}
+            immichStack={image.immich_stack}
+            isRaw={image.is_raw}
           />
         </div>
       </div>

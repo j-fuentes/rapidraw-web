@@ -1278,6 +1278,10 @@
     "items": {
       "cloudPlaceholder": "Almacenado en iCloud — no descargado",
       "immichPlaceholder": "Almacenado en Immich — no descargado",
+      "immichStackCollapse": "Ocultar las {{count}} fotos de esta pila de Immich",
+      "immichStackCover": "Portada",
+      "immichStackCoverTooltip": "Portada de la pila en Immich",
+      "immichStackExpand": "Pila de Immich con {{count}} fotos: mostrarlas",
       "collapseFolder": "Contraer carpeta",
       "currentFolder": "Carpeta actual",
       "expandFolder": "Expandir carpeta",

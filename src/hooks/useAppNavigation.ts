@@ -15,6 +15,7 @@ import { debouncedSave, debouncedSetHistory } from './useEditorActions';
 import { clearLibrarySelection } from './useLibraryActions';
 import { computeSortedLibrary } from './useSortedLibrary';
 import { getImmichAlbumImages, isImmichAlbumId } from '../components/immich/immichApi';
+import { withExpandedImmichStacks } from '../components/immich/immichStacks';
 
 export interface AppNavigationProps {
   clearThumbnailQueue: () => void;
@@ -487,10 +488,14 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
       });
 
       try {
-        const files: ImageFile[] = isImmichAlbumId(albumId)
+        let files: ImageFile[] = isImmichAlbumId(albumId)
           ? await getImmichAlbumImages(albumId)
           : await invoke(Invokes.GetAlbumImages, { paths: imagePaths });
         if (!isCurrentAlbum()) return true;
+        if (isImmichAlbumId(albumId)) {
+          files = await withExpandedImmichStacks(files, preserveEditor);
+          if (!isCurrentAlbum()) return true;
+        }
 
         const initialRatings: Record<string, number> = {};
         files.forEach((f) => {

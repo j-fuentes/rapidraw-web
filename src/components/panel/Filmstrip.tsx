@@ -12,6 +12,7 @@ import { useProcessStore } from '../../store/useProcessStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { useDraggable } from '@dnd-kit/core';
+import ImmichStackBadge from '../immich/ImmichStackBadge';
 
 const HORIZONTAL_PADDING = 4;
 const ITEM_GAP = 8;
@@ -303,6 +304,15 @@ const FilmstripThumbnail = memo(
             </div>
           </div>
         </div>
+
+        {imageFile.immich_stack && (
+          <div className="absolute top-1 left-1 z-20 pointer-events-none">
+            <ImmichStackBadge path={path} stack={imageFile.immich_stack} isRaw={imageFile.is_raw} variant="strip" />
+          </div>
+        )}
+        {imageFile.immich_stack?.parent && (
+          <div className="absolute inset-0 rounded-md pointer-events-none z-20 ring-2 ring-inset ring-accent/50" />
+        )}
 
         {isVirtualCopy && (
           <>

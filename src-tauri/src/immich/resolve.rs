@@ -4,13 +4,15 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use super::client::{Asset, ImmichClient, Stack};
-use super::registry::{self, RemoteImage};
+use super::registry::{self, RemoteImage, StackEntry, StackMember};
 
 #[derive(Debug, Clone)]
 pub struct Resolved {
     pub path: PathBuf,
     pub image: RemoteImage,
     pub file_modified_at: Option<String>,
+    /// The Immich stack this entry stands for (two or more files).
+    pub stack: Option<StackEntry>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -81,9 +83,42 @@ impl StackIndex {
         Self { stacks, by_asset }
     }
 
-    fn primary_of(&self, asset: &Asset) -> Option<&str> {
-        let stack = &self.stacks[*self.by_asset.get(&asset.id)?];
-        (stack.primary_asset_id != asset.id).then_some(stack.primary_asset_id.as_str())
+    fn index_of(&self, asset: &Asset) -> Option<usize> {
+        self.by_asset.get(&asset.id).copied()
+    }
+
+    /// The files of a stack that can be opened (no trashed or unsupported
+    /// ones), cover first.
+    fn members(&self, index: usize, album_id: Option<&str>, cache_dir: &Path) -> StackEntry {
+        let stack = &self.stacks[index];
+        let mut seen = HashSet::new();
+        let mut members: Vec<StackMember> = stack
+            .assets
+            .iter()
+            .filter(|a| !a.is_trashed && a.kind == "IMAGE")
+            .filter_map(|a| {
+                let path = cache_path(a, cache_dir);
+                (crate::formats::is_supported_image_file(&path) && seen.insert(path.clone())).then(
+                    || StackMember {
+                        path,
+                        asset_id: a.id.clone(),
+                        file_modified_at: a.file_modified_at.clone(),
+                        is_primary: a.id == stack.primary_asset_id,
+                    },
+                )
+            })
+            .collect();
+        members.sort_by(|a, b| {
+            b.is_primary.cmp(&a.is_primary).then_with(|| {
+                let name = |m: &StackMember| m.path.file_name().map(|n| n.to_ascii_lowercase());
+                name(a).cmp(&name(b))
+            })
+        });
+        StackEntry {
+            stack_id: stack.id.clone(),
+            album_id: album_id.map(str::to_string),
+            members,
+        }
     }
 
     fn source<'a>(&'a self, listed: &'a Asset, cache_dir: &Path) -> &'a Asset {
@@ -96,9 +131,18 @@ impl StackIndex {
             .unwrap_or_default()
             .iter()
             .filter(|a| a.id != listed.id && !a.is_trashed && is_raw(a))
-            .max_by_key(|raw| cache_path(raw, cache_dir).exists())
+            .max_by_key(|raw| (cache_path(raw, cache_dir).exists(), same_stem(raw, listed)))
             .unwrap_or(listed)
     }
+}
+
+fn same_stem(a: &Asset, b: &Asset) -> bool {
+    let stem = |asset: &Asset| {
+        Path::new(&asset.original_file_name)
+            .file_stem()
+            .map(|s| s.to_ascii_lowercase())
+    };
+    stem(a) == stem(b)
 }
 
 fn is_raw(asset: &Asset) -> bool {
@@ -196,14 +240,27 @@ fn resolve(
     filter: &Filter,
     cache_dir: &Path,
 ) -> Vec<Resolved> {
+    // One entry per stack: its primary asset when listed, otherwise the
+    // first listed asset of the stack.
     let listed_ids: HashSet<&str> = assets.iter().map(|a| a.id.as_str()).collect();
+    let mut shown_for_stack: HashMap<usize, &str> = HashMap::new();
+    for listed in assets {
+        if let Some(index) = stacks.index_of(listed) {
+            let primary = stacks.stacks[index].primary_asset_id.as_str();
+            let shown = if listed_ids.contains(primary) {
+                primary
+            } else {
+                listed.id.as_str()
+            };
+            shown_for_stack.entry(index).or_insert(shown);
+        }
+    }
+
     let mut seen = HashSet::new();
     let mut resolved = Vec::with_capacity(assets.len());
     for listed in assets {
-        if stacks
-            .primary_of(listed)
-            .is_some_and(|primary| listed_ids.contains(primary))
-        {
+        let index = stacks.index_of(listed);
+        if index.is_some_and(|i| shown_for_stack.get(&i) != Some(&listed.id.as_str())) {
             continue;
         }
         let source = stacks.source(listed, cache_dir);
@@ -211,6 +268,9 @@ fn resolve(
         if !crate::formats::is_supported_image_file(&path) || !seen.insert(path.clone()) {
             continue;
         }
+        let stack = index
+            .map(|i| stacks.members(i, filter.album_id.as_deref(), cache_dir))
+            .filter(|stack| stack.members.len() > 1);
         resolved.push(Resolved {
             path,
             file_modified_at: source.file_modified_at.clone(),
@@ -219,6 +279,7 @@ fn resolve(
                 listed_asset_id: listed.id.clone(),
                 album_id: filter.album_id.clone(),
             },
+            stack,
         });
     }
     resolved
@@ -242,6 +303,96 @@ mod tests {
             .collect();
         rows.sort();
         rows
+    }
+
+    fn asset(n: u8, name: &str) -> Asset {
+        serde_json::from_value(json!({
+            "id": format!("00000000-0000-4000-8000-0000000000{n:02x}"),
+            "type": "IMAGE",
+            "originalFileName": name,
+        }))
+        .unwrap()
+    }
+
+    fn stack(n: u8, primary: &Asset, assets: &[&Asset]) -> Stack {
+        Stack {
+            id: format!("stack-{n}"),
+            primary_asset_id: primary.id.clone(),
+            assets: assets.iter().map(|a| (*a).clone()).collect(),
+        }
+    }
+
+    fn names(entry: &Resolved) -> Vec<String> {
+        entry
+            .stack
+            .as_ref()
+            .map(|s| {
+                s.members
+                    .iter()
+                    .map(|m| {
+                        let name = m.path.file_name().unwrap().to_string_lossy().into_owned();
+                        if m.is_primary {
+                            format!("*{name}")
+                        } else {
+                            name
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn one_entry_per_stack_with_its_members() {
+        let cache = Path::new("/cache");
+        let jpg = asset(1, "DSCF0001.JPG");
+        let raf = asset(2, "DSCF0001.RAF");
+        let other_raf = asset(3, "DSCF0000.RAF");
+        let burst_cover = asset(4, "DSCF6437.RAF");
+        let burst_a = asset(5, "DSCF6438.RAF");
+        let burst_b = asset(6, "DSCF6439.RAF");
+        let single = asset(7, "IMG_1.HEIC");
+        let mut trashed = asset(8, "IMG_2.JPG");
+        trashed.is_trashed = true;
+        let lonely = asset(9, "IMG_2.HEIC");
+
+        let stacks = StackIndex::new(vec![
+            stack(1, &jpg, &[&jpg, &other_raf, &raf]),
+            stack(2, &burst_cover, &[&burst_cover, &burst_b, &burst_a]),
+            stack(3, &lonely, &[&lonely, &trashed]),
+        ]);
+        // The burst cover is not in the album; the RAWs of the pair are not
+        // listed either (as in an album with only the JPG).
+        let listed = vec![
+            jpg.clone(),
+            burst_b.clone(),
+            burst_a.clone(),
+            single.clone(),
+            lonely.clone(),
+        ];
+        let resolved = resolve(&listed, &stacks, &Filter::default(), cache);
+        assert_eq!(resolved.len(), 4);
+
+        // RAW+JPG: opens the RAW with the same name, lists all the files.
+        assert_eq!(resolved[0].path, cache_path(&raf, cache));
+        assert_eq!(resolved[0].image.listed_asset_id, jpg.id);
+        assert_eq!(
+            names(&resolved[0]),
+            ["*DSCF0001.JPG", "DSCF0000.RAF", "DSCF0001.RAF"]
+        );
+
+        // Burst whose cover is not listed: a single entry, the first listed.
+        assert_eq!(resolved[1].image.asset_id, burst_b.id);
+        assert_eq!(
+            names(&resolved[1]),
+            ["*DSCF6437.RAF", "DSCF6438.RAF", "DSCF6439.RAF"]
+        );
+
+        // Not stacked, and a stack left with one usable file: no stack.
+        assert_eq!(resolved[2].image.asset_id, single.id);
+        assert!(resolved[2].stack.is_none());
+        assert_eq!(resolved[3].image.asset_id, lonely.id);
+        assert!(resolved[3].stack.is_none());
     }
 
     /// Same listing as with the full `GET /stacks`, for an album
@@ -303,6 +454,19 @@ mod tests {
                     new.len()
                 );
                 assert_eq!(summary(&new), summary(&old));
+
+                // IMMICH_TEST_SHOW=DSCF64,IMG_ prints the stacks of those files.
+                let show = std::env::var("IMMICH_TEST_SHOW").unwrap_or_default();
+                let wanted: Vec<&str> = show.split(',').filter(|s| !s.is_empty()).collect();
+                let stacked = new.iter().filter(|r| r.stack.is_some()).count();
+                println!("  {stacked} entries are stacks");
+                for entry in &new {
+                    let members = names(entry);
+                    if members.iter().any(|m| wanted.iter().any(|w| m.contains(w))) {
+                        let name = entry.path.file_name().unwrap().to_string_lossy();
+                        println!("  {name}: {members:?}");
+                    }
+                }
             }
         });
     }

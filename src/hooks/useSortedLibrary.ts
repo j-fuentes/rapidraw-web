@@ -11,6 +11,7 @@ import {
   GroupingMode,
 } from '../components/ui/AppProperties';
 import { buildImageGroups, GroupBadgeInfo, GroupId } from '../utils/imageGrouping';
+import { placeImmichStackMembers } from '../components/immich/immichStacks';
 
 export const ADVANCED_QUERY_REGEX =
   /^(iso|aperture|f|shutter|s|focal|mm|rating|color|camera|make|model|lens)(?=\s*[:<>=])\s*(?::)?\s*(>=|<=|>|<|=)?\s*(.+)$/i;
@@ -312,12 +313,14 @@ function computeGroupedLibrary(
     return order === SortDirection.Ascending ? comparison : -comparison;
   });
 
+  const displayList = placeImmichStackMembers(list, libraryState.expandedImmichStacks ?? {});
+
   const badges =
     isGroupingActive && options.includeBadges
       ? buildImageGroups(imageList, groupingMode, appSettings?.groupEditedFiles ?? true).badges
       : null;
 
-  return { displayList: list, badges };
+  return { displayList, badges };
 }
 
 export function computeSortedLibrary(libraryState: any, settingsState: any): ImageFile[] {
@@ -332,6 +335,7 @@ export function useSortedLibrary() {
   const sortCriteria = useLibraryStore((state) => state.sortCriteria);
   const needsExif = useLibraryStore((state) => usesExif(state.sortCriteria, state.searchCriteria));
   const exifByPath = useLibraryStore((state) => (needsExif ? state.exifByPath : NO_EXIF));
+  const expandedImmichStacks = useLibraryStore((state) => state.expandedImmichStacks);
 
   const appSettings = useSettingsStore((state) => state.appSettings);
 
@@ -340,11 +344,20 @@ export function useSortedLibrary() {
 
   const displayList = useMemo(() => {
     return computeGroupedLibrary(
-      { imageList, imageRatings, filterCriteria, searchCriteria, sortCriteria, exifByPath },
+      { imageList, imageRatings, filterCriteria, searchCriteria, sortCriteria, exifByPath, expandedImmichStacks },
       { appSettings },
       { includeBadges: false },
     ).displayList;
-  }, [imageList, sortCriteria, imageRatings, filterCriteria, searchCriteria, appSettings, exifByPath]);
+  }, [
+    imageList,
+    sortCriteria,
+    imageRatings,
+    filterCriteria,
+    searchCriteria,
+    appSettings,
+    exifByPath,
+    expandedImmichStacks,
+  ]);
 
   const badges = useMemo(
     () => (groupingMode !== 'off' ? buildImageGroups(imageList, groupingMode, groupEditedFiles).badges : null),

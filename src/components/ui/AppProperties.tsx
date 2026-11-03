@@ -382,6 +382,15 @@ export interface ImageFile {
   is_raw: boolean;
   group_id: string | null;
   needs_ai: boolean;
+  immich_stack?: ImmichStackBadge | null;
+}
+
+/// An Immich stack shown as one library entry (see immichStacks.ts).
+export interface ImmichStackBadge {
+  stack_id: string;
+  count: number;
+  is_primary: boolean;
+  parent: string | null;
 }
 
 export interface Option {

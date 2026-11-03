@@ -25,6 +25,7 @@ import { useProcessStore } from '../../../store/useProcessStore';
 import { useSettingsStore } from '../../../store/useSettingsStore';
 import { useLibraryStore } from '../../../store/useLibraryStore';
 import { isImmichAlbumId } from '../../immich/immichApi';
+import ImmichStackBadge from '../../immich/ImmichStackBadge';
 import { IconAperture, IconFocalLength, IconIso, IconShutter } from '../editor/ExifIcons';
 
 const LIST_DATE_FORMAT = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
@@ -53,6 +54,8 @@ const ThumbnailComponent = ({
   isEdited,
   isCloudPlaceholder,
   groupBadgeLabel,
+  immichStack,
+  isRaw,
   onAspectRatioLoaded,
 }: any) => {
   const { t } = useTranslation();
@@ -295,6 +298,20 @@ const ThumbnailComponent = ({
           </div>
         )}
       </div>
+
+      {immichStack && (
+        <div
+          className={clsx(
+            'absolute top-1.5 z-20 pointer-events-none',
+            selectionModeActive ? 'left-9' : isCloudPlaceholder && layers.length > 0 ? 'left-8' : 'left-1.5',
+          )}
+        >
+          <ImmichStackBadge path={path} stack={immichStack} isRaw={isRaw} />
+        </div>
+      )}
+      {immichStack?.parent && (
+        <div className="absolute inset-0 rounded-md pointer-events-none z-20 ring-2 ring-inset ring-accent/50" />
+      )}
 
       <div
         className={clsx(
@@ -552,6 +569,8 @@ const ListItemComponent = ({
   isCloudPlaceholder,
   isPrevSelected,
   isNextSelected,
+  immichStack,
+  isRaw,
 }: any) => {
   const { t } = useTranslation();
   const data = useProcessStore((s) => s.thumbnails[path]);
@@ -803,6 +822,7 @@ const ListItemComponent = ({
         <Text variant={TextVariants.small} className="truncate" weight={TextWeights.medium} color={TextColors.primary}>
           {baseName}
         </Text>
+        {immichStack && <ImmichStackBadge path={path} stack={immichStack} isRaw={isRaw} variant="inline" />}
         {isVirtualCopy && (
           <Text
             as="div"
@@ -1061,6 +1081,8 @@ const RowComponent = ({
                 isCloudPlaceholder={imageFile.is_cloud_placeholder}
                 isPrevSelected={isPrevSelected}
                 isNextSelected={isNextSelected}
+                immichStack={imageFile.immich_stack}
+                isRaw={imageFile.is_raw}
               />
             ) : (
               <Thumbnail
@@ -1079,6 +1101,8 @@ const RowComponent = ({
                 aspectRatio={thumbnailAspectRatio}
                 isCloudPlaceholder={imageFile.is_cloud_placeholder}
                 groupBadgeLabel={imageFile.group_id && groupBadgeInfo?.get(imageFile.group_id)?.label}
+                immichStack={imageFile.immich_stack}
+                isRaw={imageFile.is_raw}
                 onAspectRatioLoaded={onAspectRatioLoaded}
               />
             )}

@@ -13,6 +13,40 @@ pub struct RemoteImage {
 static ENTRIES: Lazy<RwLock<HashMap<PathBuf, RemoteImage>>> =
     Lazy::new(|| RwLock::new(HashMap::new()));
 
+/// One file of an Immich stack, as it can be opened from the library.
+#[derive(Debug, Clone)]
+pub struct StackMember {
+    pub path: PathBuf,
+    pub asset_id: String,
+    pub file_modified_at: Option<String>,
+    pub is_primary: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct StackEntry {
+    pub stack_id: String,
+    pub album_id: Option<String>,
+    pub members: Vec<StackMember>,
+}
+
+/// Stacks by the path of the library entry that stands for them.
+static STACKS: Lazy<RwLock<HashMap<PathBuf, StackEntry>>> =
+    Lazy::new(|| RwLock::new(HashMap::new()));
+
+pub fn insert_stack(path: PathBuf, stack: StackEntry) {
+    STACKS.write().unwrap().insert(path, stack);
+}
+
+pub fn stack(path: &Path) -> Option<StackEntry> {
+    STACKS.read().unwrap().get(path).cloned()
+}
+
+/// Registers a stack member so it can be opened, without replacing an
+/// entry the listing already made for that file.
+pub fn insert_member(path: PathBuf, image: RemoteImage) {
+    ENTRIES.write().unwrap().entry(path).or_insert(image);
+}
+
 pub fn insert(path: PathBuf, image: RemoteImage) {
     ENTRIES.write().unwrap().insert(path, image);
 }
@@ -58,4 +92,5 @@ pub fn is_trashing(asset_id: &str) -> bool {
 
 pub fn clear() {
     ENTRIES.write().unwrap().clear();
+    STACKS.write().unwrap().clear();
 }

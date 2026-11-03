@@ -1,5 +1,6 @@
 use serde::Serialize;
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
 use super::client::{Album, ImmichClient, TimelineMonth};
@@ -110,23 +111,73 @@ pub fn immich_sync_status() -> sync::SyncStatus {
     sync::status()
 }
 
+/// What the library shows about the Immich stack of an image.
+#[derive(Serialize, Clone, Debug)]
+pub struct StackBadge {
+    pub stack_id: String,
+    /// Files in the stack that can be opened.
+    pub count: usize,
+    /// This file is the cover (primary asset) of the stack.
+    pub is_primary: bool,
+    /// For a file shown by expanding a stack: the library entry of the stack.
+    pub parent: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct ImmichImageFile {
+    #[serde(flatten)]
+    file: ImageFile,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    immich_stack: Option<StackBadge>,
+}
+
+fn member_image(member: &registry::StackMember, album_id: Option<String>) -> registry::RemoteImage {
+    registry::RemoteImage {
+        asset_id: member.asset_id.clone(),
+        listed_asset_id: member.asset_id.clone(),
+        album_id,
+    }
+}
+
 #[tauri::command]
 pub async fn immich_get_images(
     filter: resolve::Filter,
     app_handle: AppHandle,
-) -> Result<Vec<ImageFile>, String> {
+) -> Result<Vec<ImmichImageFile>, String> {
     let session = session(&app_handle)?;
     let resolved = resolve::listing(&session.client, &filter, &session.cache_dir).await?;
 
     let mut local_paths = Vec::new();
     let mut placeholders = Vec::new();
+    let mut badges = HashMap::new();
     for item in resolved {
         let path = item.path.to_string_lossy().into_owned();
         if item.path.exists() {
             local_paths.extend(virtual_copies(&item.path));
-            local_paths.push(path);
+            local_paths.push(path.clone());
         } else {
             placeholders.push(placeholder_file(&path, item.file_modified_at.as_deref()));
+        }
+        if let Some(stack) = item.stack {
+            for member in &stack.members {
+                registry::insert_member(
+                    member.path.clone(),
+                    member_image(member, stack.album_id.clone()),
+                );
+            }
+            badges.insert(
+                path,
+                StackBadge {
+                    stack_id: stack.stack_id.clone(),
+                    count: stack.members.len(),
+                    is_primary: stack
+                        .members
+                        .iter()
+                        .any(|m| m.is_primary && m.asset_id == item.image.asset_id),
+                    parent: None,
+                },
+            );
+            registry::insert_stack(item.path.clone(), stack);
         }
         registry::insert(item.path, item.image);
     }
@@ -134,7 +185,68 @@ pub async fn immich_get_images(
     let mut files =
         crate::file_management::get_album_images(local_paths, app_handle.clone()).await?;
     files.extend(placeholders);
-    Ok(files)
+    Ok(files
+        .into_iter()
+        .map(|file| ImmichImageFile {
+            immich_stack: badges.get(&file.path).cloned(),
+            file,
+        })
+        .collect())
+}
+
+/// The other files of the Immich stack shown as `path` in the library,
+/// cover first, ready to be opened like any listed image.
+#[tauri::command]
+pub async fn immich_stack_members(
+    path: String,
+    app_handle: AppHandle,
+) -> Result<Vec<ImmichImageFile>, String> {
+    let entry_path = PathBuf::from(&path);
+    let stack = registry::stack(&entry_path).ok_or("This image is not an Immich stack.")?;
+
+    let mut local_paths = Vec::new();
+    let mut placeholders = Vec::new();
+    let mut order = HashMap::new();
+    for member in stack.members.iter().filter(|m| m.path != entry_path) {
+        registry::insert_member(
+            member.path.clone(),
+            member_image(member, stack.album_id.clone()),
+        );
+        let member_path = member.path.to_string_lossy().into_owned();
+        order.insert(member_path.clone(), (order.len(), member.is_primary));
+        if member.path.exists() {
+            local_paths.push(member_path);
+        } else {
+            placeholders.push(placeholder_file(
+                &member_path,
+                member.file_modified_at.as_deref(),
+            ));
+        }
+    }
+
+    let mut files =
+        crate::file_management::get_album_images(local_paths, app_handle.clone()).await?;
+    files.extend(placeholders);
+    let mut files: Vec<_> = files
+        .into_iter()
+        .filter_map(|file| {
+            let (position, is_primary) = *order.get(&file.path)?;
+            Some((
+                position,
+                ImmichImageFile {
+                    immich_stack: Some(StackBadge {
+                        stack_id: stack.stack_id.clone(),
+                        count: stack.members.len(),
+                        is_primary,
+                        parent: Some(path.clone()),
+                    }),
+                    file,
+                },
+            ))
+        })
+        .collect();
+    files.sort_by_key(|(position, _)| *position);
+    Ok(files.into_iter().map(|(_, file)| file).collect())
 }
 
 fn placeholder_file(path: &str, file_modified_at: Option<&str>) -> ImageFile {

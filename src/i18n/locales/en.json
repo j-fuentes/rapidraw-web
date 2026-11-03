@@ -1253,6 +1253,10 @@
     "items": {
       "cloudPlaceholder": "Stored in iCloud — not downloaded",
       "immichPlaceholder": "Stored in Immich — not downloaded",
+      "immichStackCollapse": "Hide the {{count}} files of this Immich stack",
+      "immichStackCover": "Cover",
+      "immichStackCoverTooltip": "Cover of the stack in Immich",
+      "immichStackExpand": "Immich stack of {{count}} files: show them",
       "collapseFolder": "Collapse Folder",
       "currentFolder": "Current Folder",
       "expandFolder": "Expand Folder",

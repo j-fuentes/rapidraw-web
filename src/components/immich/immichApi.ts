@@ -20,6 +20,7 @@ export const ImmichInvokes = {
   Flush: 'immich_flush',
   PrepareExport: 'immich_prepare_export',
   RemoveFromAlbum: 'immich_remove_from_album',
+  StackMembers: 'immich_stack_members',
 } as const;
 
 export interface ImmichSettings {
@@ -115,6 +116,8 @@ export const monthFilter = (timeBucket: string): ImmichFilter => {
 
 export const getImmichAlbumImages = (albumId: string) =>
   invoke<ImageFile[]>(ImmichInvokes.GetImages, { filter: albumIdToFilter(albumId) });
+
+export const getImmichStackMembers = (path: string) => invoke<ImageFile[]>(ImmichInvokes.StackMembers, { path });
 
 export const getImmichSyncStatus = () => invoke<ImmichSyncStatus>(ImmichInvokes.SyncStatus);
 
