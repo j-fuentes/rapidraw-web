@@ -156,7 +156,6 @@ export default function BottomBar({
   rating,
   selectedImage,
   showFilmstrip = true,
-  layoutMode,
   showZoomControls = true,
   thumbnailAspectRatio,
   totalImages,
@@ -170,38 +169,25 @@ export default function BottomBar({
     }));
   };
 
-  const { isInstantTransition, uiVisibility, setUI } = useUIStore(
+  const { isInstantTransition, uiVisibility, setUI, sidePanelModes, sidePanelDrawer, toggleSidePanel } = useUIStore(
     useShallow((state) => ({
       isInstantTransition: state.isInstantTransition,
       uiVisibility: state.uiVisibility,
       setUI: state.setUI,
+      sidePanelModes: state.sidePanelModes,
+      sidePanelDrawer: state.sidePanelDrawer,
+      toggleSidePanel: state.toggleSidePanel,
     })),
   );
 
-  const isLeftOpen = uiVisibility.leftPanel;
-  const isRightOpen = uiVisibility.rightPanel;
+  // The panel toggles are always shown, whatever the layout: on narrow screens they open the side panels
+  // as drawers over the view (see App), and the rest of the bar scrolls horizontally if it does not fit.
+  const isLeftOpen = sidePanelModes.left === 'drawer' ? sidePanelDrawer === 'left' : uiVisibility.leftPanel;
+  const isRightOpen = sidePanelModes.right === 'drawer' ? sidePanelDrawer === 'right' : uiVisibility.rightPanel;
   const isBottomOpen = uiVisibility.filmstrip;
-  const showLeftPanelToggle = layoutMode === 'full';
-  const showRightPanelToggle = layoutMode === 'full' || layoutMode === 'wide';
-  const showBottomPanelToggle = layoutMode !== 'compact';
 
-  const toggleLeft = () =>
-    setUI((s) => {
-      const isOpening = !s.uiVisibility.leftPanel;
-      return {
-        uiVisibility: { ...s.uiVisibility, leftPanel: isOpening },
-        leftPanelWidth: isOpening && s.leftPanelWidth < 250 ? 350 : s.leftPanelWidth,
-      };
-    });
-
-  const toggleRight = () =>
-    setUI((s) => {
-      const isOpening = !s.uiVisibility.rightPanel;
-      return {
-        uiVisibility: { ...s.uiVisibility, rightPanel: isOpening },
-        rightPanelWidth: isOpening && s.rightPanelWidth < 250 ? 350 : s.rightPanelWidth,
-      };
-    });
+  const toggleLeft = () => toggleSidePanel('left');
+  const toggleRight = () => toggleSidePanel('right');
 
   const toggleBottom = () =>
     setUI((s) => ({
@@ -389,12 +375,12 @@ export default function BottomBar({
 
       <div
         className={clsx(
-          'shrink-0 h-12 flex items-center justify-between px-3',
+          'shrink-0 h-12 flex items-center justify-between gap-3 px-3',
           !isLibraryView && 'border-t transition-colors duration-300',
           !isLibraryView && showFilmstrip && isFilmstripVisible ? 'border-surface' : 'border-transparent',
         )}
       >
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 min-w-0 h-full overflow-x-auto overflow-y-hidden no-scrollbar">
           <StarRating rating={rating} onRate={onRate} disabled={isRatingDisabled} />
           <FlagToggles
             flag={flag}
@@ -707,43 +693,31 @@ export default function BottomBar({
             </>
           )}
 
-          <div className="flex items-center gap-1 shrink-0">
-            {(showLeftPanelToggle || showRightPanelToggle || showBottomPanelToggle) && (
-              <>
-                {showLeftPanelToggle && (
-                  <PanelToggleButton
-                    onClick={toggleLeft}
-                    Icon={PanelLeft}
-                    tooltip={
-                      isLeftOpen ? t('ui.bottomBar.tooltips.collapseLeft') : t('ui.bottomBar.tooltips.expandLeft')
-                    }
-                  />
-                )}
+          <div className="flex items-center gap-1 shrink-0" data-panel-toggles>
+            <PanelToggleButton
+              onClick={toggleLeft}
+              Icon={PanelLeft}
+              tooltip={isLeftOpen ? t('ui.bottomBar.tooltips.collapseLeft') : t('ui.bottomBar.tooltips.expandLeft')}
+            />
 
-                {showBottomPanelToggle && showFilmstrip && (
-                  <PanelToggleButton
-                    onClick={toggleBottom}
-                    Icon={PanelBottom}
-                    tooltip={
-                      isBottomOpen
-                        ? t('ui.bottomBar.tooltips.collapseFilmstrip')
-                        : t('ui.bottomBar.tooltips.expandFilmstrip')
-                    }
-                    disabled={isLibraryView}
-                  />
-                )}
-
-                {showRightPanelToggle && (
-                  <PanelToggleButton
-                    onClick={toggleRight}
-                    Icon={PanelRight}
-                    tooltip={
-                      isRightOpen ? t('ui.bottomBar.tooltips.collapseRight') : t('ui.bottomBar.tooltips.expandRight')
-                    }
-                  />
-                )}
-              </>
+            {showFilmstrip && (
+              <PanelToggleButton
+                onClick={toggleBottom}
+                Icon={PanelBottom}
+                tooltip={
+                  isBottomOpen
+                    ? t('ui.bottomBar.tooltips.collapseFilmstrip')
+                    : t('ui.bottomBar.tooltips.expandFilmstrip')
+                }
+                disabled={isLibraryView}
+              />
             )}
+
+            <PanelToggleButton
+              onClick={toggleRight}
+              Icon={PanelRight}
+              tooltip={isRightOpen ? t('ui.bottomBar.tooltips.collapseRight') : t('ui.bottomBar.tooltips.expandRight')}
+            />
           </div>
         </div>
       </div>

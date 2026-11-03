@@ -38,7 +38,7 @@ import LibraryView from './components/views/LibraryView';
 
 import { ContextMenuProvider } from './context/ContextMenuContext';
 import { useSettingsStore } from './store/useSettingsStore';
-import { DEFAULT_BOTTOM_PANEL_HEIGHT, DEFAULT_PANEL_WIDTH, useUIStore } from './store/useUIStore';
+import { DEFAULT_BOTTOM_PANEL_HEIGHT, DEFAULT_PANEL_WIDTH, SidePanelMode, useUIStore } from './store/useUIStore';
 import { useLibraryStore } from './store/useLibraryStore';
 import { useEditorStore } from './store/useEditorStore';
 import { JobKind, useProcessStore } from './store/useProcessStore';
@@ -167,6 +167,7 @@ function App() {
     activePanel,
     activeLayoutDragItem,
     isSettingsOpen,
+    sidePanelDrawer,
     setUI,
     setPanel,
     setLayoutDragItem,
@@ -185,6 +186,7 @@ function App() {
       activePanel: state.activePanel,
       activeLayoutDragItem: state.activeLayoutDragItem,
       isSettingsOpen: state.isSettingsOpen,
+      sidePanelDrawer: state.sidePanelDrawer,
       setUI: state.setUI,
       setPanel: state.setPanel,
       setLayoutDragItem: state.setLayoutDragItem,
@@ -292,6 +294,28 @@ function App() {
 
   const useCompactPanels = layoutMode === 'compact';
   const useWidePanels = layoutMode === 'wide';
+
+  // Below this width the left panel does not fit next to the view and the right panel, so it opens as a
+  // drawer over the view instead of being hidden (it holds the folder tree and Immich). In the compact
+  // layout the right panel is a drawer too. The bottom bar always shows the toggles for both.
+  const SIDE_PANEL_DRAWER_MAX_WIDTH = 1200;
+  const leftPanelMode: SidePanelMode =
+    layoutMode !== 'full' || (viewportSize.width > 0 && viewportSize.width < SIDE_PANEL_DRAWER_MAX_WIDTH)
+      ? 'drawer'
+      : 'inline';
+  const rightPanelMode: SidePanelMode = useCompactPanels ? 'drawer' : 'inline';
+
+  useEffect(() => {
+    setUI((state) =>
+      state.sidePanelModes.left === leftPanelMode && state.sidePanelModes.right === rightPanelMode
+        ? {}
+        : { sidePanelModes: { left: leftPanelMode, right: rightPanelMode }, sidePanelDrawer: null },
+    );
+  }, [leftPanelMode, rightPanelMode, setUI]);
+
+  useEffect(() => {
+    setUI({ sidePanelDrawer: null });
+  }, [activeView, setUI]);
   const compactEditorPanelMinHeight = 220;
   const compactEditorPanelMaxHeight =
     viewportSize.height > 0
@@ -792,7 +816,13 @@ function App() {
   const hasRoots = rootPaths && rootPaths.length > 0;
   const hasMainContent = hasRoots || (activeView === 'editor' && !!selectedImage);
 
-  const shouldHideFolderTree = useCompactPanels || useWidePanels;
+  const shouldHideFolderTree = leftPanelMode === 'drawer';
+  const drawerSide = sidePanelDrawer && hasMainContent && !isFullScreen ? sidePanelDrawer : null;
+  const drawerWidth = Math.min(
+    drawerSide === 'right' ? rightPanelWidth : leftPanelWidth,
+    Math.max(240, viewportSize.width - 64),
+  );
+  const closeSidePanelDrawer = () => setUI({ sidePanelDrawer: null });
   const isWgpuActive =
     activeView === 'editor' &&
     appSettings?.useWgpuRenderer !== false &&
@@ -898,7 +928,7 @@ function App() {
             collisionDetection={pointerWithin}
             measuring={DND_MEASURING}
           >
-            <div className="flex flex-row grow h-full min-h-0">
+            <div className="relative flex flex-row grow h-full min-h-0">
               {!shouldHideFolderTree && hasMainContent && (
                 <SidePanelArea
                   side="left"
@@ -1015,6 +1045,30 @@ function App() {
                   isResizing={isResizing}
                   showAdditionalTabs={useWidePanels}
                 />
+              )}
+              {drawerSide && (
+                <div
+                  className={clsx(
+                    'absolute inset-0 z-40 flex',
+                    drawerSide === 'left' ? 'justify-start' : 'justify-end',
+                  )}
+                  data-side-panel-drawer={drawerSide}
+                >
+                  <div className="absolute inset-0 bg-black/40" onClick={closeSidePanelDrawer} />
+                  <div className="relative h-full shadow-2xl" style={{ width: drawerWidth }}>
+                    <SidePanelArea
+                      side={drawerSide}
+                      width={drawerWidth}
+                      topRegion={drawerSide === 'left' ? 'leftTop' : 'rightTop'}
+                      bottomRegion={drawerSide === 'left' ? 'leftBottom' : 'rightBottom'}
+                      renderPanel={renderAppPanel}
+                      onWidthChange={() => {}}
+                      onWidthReset={() => {}}
+                      isResizing={isResizing}
+                      showAdditionalTabs={drawerSide === 'right'}
+                    />
+                  </div>
+                </div>
               )}
             </div>
             <DragOverlay modifiers={activeImageDragItem ? [imageDragModifier] : undefined} dropAnimation={null}>

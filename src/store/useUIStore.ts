@@ -193,6 +193,9 @@ export const isPanelVisible = (state: UIState, panel: Panel) =>
       state.uiVisibility[region.startsWith('left') ? 'leftPanel' : 'rightPanel'],
   );
 
+export type SidePanelSide = 'left' | 'right';
+export type SidePanelMode = 'inline' | 'drawer';
+
 export interface UIState {
   activeView: string;
   isFullScreen: boolean;
@@ -209,6 +212,13 @@ export interface UIState {
   leftTopHeight: number;
   rightTopHeight: number;
   compactEditorPanelHeightOverride: number | null;
+
+  // How each side panel is shown for the current viewport (set by App). On narrow screens a side panel
+  // is shown as a drawer over the main view instead of taking space next to it. Drawer state is not
+  // persisted, so it never touches the saved uiVisibility of the desktop layout.
+  sidePanelModes: Record<SidePanelSide, SidePanelMode>;
+  sidePanelDrawer: SidePanelSide | null;
+  toggleSidePanel: (side: SidePanelSide) => void;
 
   panelLayout: Record<PanelRegion, Panel[]>;
   activePanels: Record<PanelRegion, Panel | null>;
@@ -277,6 +287,24 @@ export const useUIStore = create<UIState>((set, get) => ({
   leftTopHeight: DEFAULT_PANEL_SECTION_HEIGHT,
   rightTopHeight: DEFAULT_PANEL_SECTION_HEIGHT,
   compactEditorPanelHeightOverride: null,
+
+  sidePanelModes: { left: 'inline', right: 'inline' },
+  sidePanelDrawer: null,
+  toggleSidePanel: (side) =>
+    set((state) => {
+      if (state.sidePanelModes[side] === 'drawer') {
+        return { sidePanelDrawer: state.sidePanelDrawer === side ? null : side };
+      }
+      const visibilityKey = side === 'left' ? 'leftPanel' : 'rightPanel';
+      const widthKey = side === 'left' ? 'leftPanelWidth' : 'rightPanelWidth';
+      const isOpening = !state.uiVisibility[visibilityKey];
+      return {
+        uiVisibility: { ...state.uiVisibility, [visibilityKey]: isOpening },
+        [widthKey]: isOpening && state[widthKey] < 250 ? 350 : state[widthKey],
+        // Opening an inline panel closes a drawer covering the view, so both are never stacked.
+        sidePanelDrawer: isOpening ? null : state.sidePanelDrawer,
+      };
+    }),
 
   panelLayout: {
     leftTop: [Panel.Metadata, Panel.FolderTree, Panel.Export],

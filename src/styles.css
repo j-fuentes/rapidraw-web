@@ -92,6 +92,13 @@
   ) !important;
 }
 
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @utility text-shadow-shiny {
   text-shadow: 0 0 18px rgba(255, 255, 255, 0.35);
 }

@@ -396,22 +396,14 @@ export const useKeyboardShortcuts = ({
         shouldFire: () => true,
         execute: (e: any, s: any) => {
           e.preventDefault();
-          const isOpening = !s.ui.uiVisibility.leftPanel;
-          s.ui.setUI((state: any) => ({
-            uiVisibility: { ...state.uiVisibility, leftPanel: isOpening },
-            leftPanelWidth: isOpening && state.leftPanelWidth < 250 ? 350 : state.leftPanelWidth,
-          }));
+          s.ui.toggleSidePanel('left');
         },
       },
       toggle_right_panel: {
         shouldFire: () => true,
         execute: (e: any, s: any) => {
           e.preventDefault();
-          const isOpening = !s.ui.uiVisibility.rightPanel;
-          s.ui.setUI((state: any) => ({
-            uiVisibility: { ...state.uiVisibility, rightPanel: isOpening },
-            rightPanelWidth: isOpening && state.rightPanelWidth < 250 ? 350 : state.rightPanelWidth,
-          }));
+          s.ui.toggleSidePanel('right');
         },
       },
       toggle_bottom_panel: {
