@@ -115,6 +115,9 @@ function computeGroupedLibrary(
       if (filterCriteria.flagStatus === FlagStatus.Rejected && image.flag !== ImageFlag.Reject) return false;
     }
 
+    // Images that are not from Immich are not affected.
+    if (filterCriteria.immichFavorites && image.immich_favorite === false) return false;
+
     if (filterCriteria.colors && filterCriteria.colors.length > 0) {
       const imageColor = (image.tags || []).find((tag: string) => tag.startsWith('color:'))?.substring(6);
       const hasMatchingColor = imageColor && filterCriteria.colors.includes(imageColor);

@@ -13,6 +13,10 @@ pub struct Resolved {
     pub file_modified_at: Option<String>,
     /// The Immich stack this entry stands for (two or more files).
     pub stack: Option<StackEntry>,
+    /// The listed asset is an Immich favorite.
+    pub listed_favorite: bool,
+    /// The listed asset, or any file of its stack, is an Immich favorite.
+    pub is_favorite: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -21,6 +25,8 @@ pub struct Filter {
     pub album_id: Option<String>,
     pub taken_from: Option<String>,
     pub taken_until: Option<String>,
+    /// `Some(true)`: only favorites (the "Favorites" source of the library).
+    pub is_favorite: Option<bool>,
 }
 
 impl Filter {
@@ -34,6 +40,9 @@ impl Filter {
         }
         if let Some(until) = day_start(self.taken_until.as_deref(), 1) {
             query["takenBefore"] = json!(until);
+        }
+        if let Some(favorite) = self.is_favorite {
+            query["isFavorite"] = json!(favorite);
         }
         query
     }
@@ -104,6 +113,7 @@ impl StackIndex {
                         asset_id: a.id.clone(),
                         file_modified_at: a.file_modified_at.clone(),
                         is_primary: a.id == stack.primary_asset_id,
+                        is_favorite: a.is_favorite,
                     },
                 )
             })
@@ -172,6 +182,7 @@ async fn stacks_for(
             filter.album_id.as_deref(),
             month(filter.taken_from.as_deref()),
             month(filter.taken_until.as_deref()),
+            filter.is_favorite == Some(true),
         )
         .await
         .unwrap_or_else(|e| {
@@ -271,6 +282,10 @@ fn resolve(
         let stack = index
             .map(|i| stacks.members(i, filter.album_id.as_deref(), cache_dir))
             .filter(|stack| stack.members.len() > 1);
+        let is_favorite = listed.is_favorite
+            || stack
+                .as_ref()
+                .is_some_and(|s| s.members.iter().any(|m| m.is_favorite));
         resolved.push(Resolved {
             path,
             file_modified_at: source.file_modified_at.clone(),
@@ -280,6 +295,8 @@ fn resolve(
                 album_id: filter.album_id.clone(),
             },
             stack,
+            listed_favorite: listed.is_favorite,
+            is_favorite,
         });
     }
     resolved
@@ -393,6 +410,234 @@ mod tests {
         assert!(resolved[2].stack.is_none());
         assert_eq!(resolved[3].image.asset_id, lonely.id);
         assert!(resolved[3].stack.is_none());
+    }
+
+    #[test]
+    fn favorite_entries() {
+        let cache = Path::new("/cache");
+        let cover = asset(1, "20261101_114937.heic");
+        let mut burst = asset(2, "20261101_114940.heic");
+        burst.is_favorite = true;
+        let mut single = asset(3, "IMG_1.JPG");
+        single.is_favorite = true;
+        let plain = asset(4, "IMG_2.JPG");
+        let mut jpg = asset(5, "DSCF0001.JPG");
+        jpg.is_favorite = true;
+        let raf = asset(6, "DSCF0001.RAF");
+        let mut trashed = asset(7, "IMG_3.JPG");
+        trashed.is_favorite = true;
+        trashed.is_trashed = true;
+        let lonely = asset(8, "IMG_3.HEIC");
+
+        let stacks = StackIndex::new(vec![
+            stack(1, &cover, &[&cover, &burst]),
+            stack(2, &jpg, &[&jpg, &raf]),
+            stack(3, &lonely, &[&lonely, &trashed]),
+        ]);
+        let listed = vec![
+            cover.clone(),
+            single.clone(),
+            plain.clone(),
+            jpg.clone(),
+            lonely.clone(),
+        ];
+        let resolved = resolve(&listed, &stacks, &Filter::default(), cache);
+        let favorites: Vec<(bool, bool)> = resolved
+            .iter()
+            .map(|r| (r.listed_favorite, r.is_favorite))
+            .collect();
+        // A burst whose favorite is not the cover, a favorite, a plain
+        // image, a RAW+JPG pair whose JPG is the favorite (the entry opens
+        // the RAW), and a trashed favorite that does not count.
+        assert_eq!(
+            favorites,
+            [
+                (false, true),
+                (true, true),
+                (false, false),
+                (true, true),
+                (false, false)
+            ]
+        );
+        assert_eq!(resolved[3].path, cache_path(&raf, cache));
+        let members = &resolved[0].stack.as_ref().unwrap().members;
+        assert_eq!(
+            members
+                .iter()
+                .map(|m| (m.asset_id.clone(), m.is_favorite))
+                .collect::<Vec<_>>(),
+            [(cover.id.clone(), false), (burst.id.clone(), true)]
+        );
+
+        // The favorites source only lists the favorite of the burst: still
+        // one entry for the whole stack, with all its files.
+        let favorites_only = Filter {
+            is_favorite: Some(true),
+            ..Default::default()
+        };
+        let resolved = resolve(
+            &[burst.clone(), single.clone(), jpg.clone()],
+            &stacks,
+            &favorites_only,
+            cache,
+        );
+        assert_eq!(resolved.len(), 3);
+        assert!(resolved.iter().all(|r| r.is_favorite));
+        assert_eq!(
+            names(&resolved[0]),
+            ["*20261101_114937.heic", "20261101_114940.heic"]
+        );
+    }
+
+    #[test]
+    fn favorites_filter_query() {
+        let query = Filter {
+            is_favorite: Some(true),
+            ..Default::default()
+        }
+        .to_query();
+        assert_eq!(query, json!({ "type": "IMAGE", "isFavorite": true }));
+        assert!(Filter::default().to_query().get("isFavorite").is_none());
+        let parsed: Filter = serde_json::from_value(json!({ "isFavorite": true })).unwrap();
+        assert_eq!(parsed.is_favorite, Some(true));
+    }
+
+    /// The "Favorites" source against Immich: one entry per stack that has a
+    /// favorite (or favorite unstacked image), the same as with the full
+    /// `GET /stacks`, every favorite image accounted for. With
+    /// IMMICH_TEST_ALBUM, the favorites of the album are those entries whose
+    /// files are favorites. Read only.
+    #[test]
+    #[ignore = "needs IMMICH_TEST_URL and IMMICH_API_KEY"]
+    fn live_favorites_match_immich() {
+        let url = std::env::var("IMMICH_TEST_URL").expect("IMMICH_TEST_URL");
+        let key = std::env::var("IMMICH_API_KEY").expect("IMMICH_API_KEY");
+        let client = ImmichClient::new(&url, &key).unwrap();
+        let cache_dir = std::env::temp_dir().join("rapidraw-immich-resolve-test");
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime.block_on(async {
+            let favorites_only = Filter {
+                is_favorite: Some(true),
+                ..Default::default()
+            };
+            let count = client
+                .count(json!({ "isFavorite": true, "type": "IMAGE" }))
+                .await
+                .unwrap();
+            let favorites = listed_assets(&client, &favorites_only).await.unwrap();
+            assert_eq!(favorites.len() as u64, count);
+            assert!(favorites.iter().all(|a| a.is_favorite));
+            let favorite_ids: HashSet<&str> = favorites.iter().map(|a| a.id.as_str()).collect();
+
+            let started = Instant::now();
+            let stacks = stacks_for(&client, &favorites_only, &favorites)
+                .await
+                .unwrap();
+            let fetched = stacks.len();
+            let entries = resolve(
+                &favorites,
+                &StackIndex::new(stacks),
+                &favorites_only,
+                &cache_dir,
+            );
+            println!(
+                "{count} favorite images -> {} entries ({} stacks, {fetched} fetched in {:?})",
+                entries.len(),
+                entries.iter().filter(|e| e.stack.is_some()).count(),
+                started.elapsed()
+            );
+            assert!(entries.iter().all(|e| e.is_favorite));
+
+            let all = StackIndex::new(client.all_stacks().await.unwrap());
+            let old = resolve(&favorites, &all, &favorites_only, &cache_dir);
+            assert_eq!(summary(&entries), summary(&old));
+
+            // Every favorite image with a supported format is an entry or a
+            // file of an entry's stack.
+            let shown: HashSet<&str> = entries
+                .iter()
+                .flat_map(|e| {
+                    std::iter::once(e.image.listed_asset_id.as_str()).chain(
+                        e.stack
+                            .iter()
+                            .flat_map(|s| s.members.iter().map(|m| m.asset_id.as_str())),
+                    )
+                })
+                .collect();
+            for favorite in &favorites {
+                if crate::formats::is_supported_image_file(&cache_path(favorite, &cache_dir)) {
+                    assert!(
+                        shown.contains(favorite.id.as_str()),
+                        "{} missing",
+                        favorite.original_file_name
+                    );
+                }
+            }
+
+            if let Ok(album) = std::env::var("IMMICH_TEST_ALBUM") {
+                let filter = Filter {
+                    album_id: Some(album),
+                    ..Default::default()
+                };
+                let assets = listed_assets(&client, &filter).await.unwrap();
+                let stacks = StackIndex::new(stacks_for(&client, &filter, &assets).await.unwrap());
+                let listing = resolve(&assets, &stacks, &filter, &cache_dir);
+                let marked: Vec<&Resolved> = listing.iter().filter(|e| e.is_favorite).collect();
+                for entry in &listing {
+                    let files: Vec<&str> = std::iter::once(entry.image.listed_asset_id.as_str())
+                        .chain(
+                            entry
+                                .stack
+                                .iter()
+                                .flat_map(|s| s.members.iter().map(|m| m.asset_id.as_str())),
+                        )
+                        .collect();
+                    let has_favorite = files.iter().any(|id| favorite_ids.contains(id));
+                    assert_eq!(entry.is_favorite, has_favorite, "{:?}", entry.path);
+                }
+                println!(
+                    "album: {} entries, {} favorites: {:?}",
+                    listing.len(),
+                    marked.len(),
+                    marked
+                        .iter()
+                        .map(|e| e.path.file_name().unwrap().to_string_lossy().into_owned())
+                        .collect::<Vec<_>>()
+                );
+            }
+        });
+    }
+
+    /// Marks an image as favorite and unmarks it again (IMMICH_TEST_ASSET, a
+    /// non-favorite image), checking Immich after each step. The original
+    /// state is restored even if a check fails.
+    #[test]
+    #[ignore = "needs IMMICH_TEST_URL, IMMICH_API_KEY and IMMICH_TEST_ASSET; changes the asset"]
+    fn live_toggle_favorite_and_restore() {
+        let url = std::env::var("IMMICH_TEST_URL").expect("IMMICH_TEST_URL");
+        let key = std::env::var("IMMICH_API_KEY").expect("IMMICH_API_KEY");
+        let id = std::env::var("IMMICH_TEST_ASSET").expect("IMMICH_TEST_ASSET");
+        let client = ImmichClient::new(&url, &key).unwrap();
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime.block_on(async {
+            let before = client.asset(&id).await.unwrap().is_favorite;
+            let ids = [id.clone()];
+            let result = async {
+                client.set_favorite(&ids, !before).await?;
+                let changed = client.asset(&id).await?.is_favorite;
+                client.set_favorite(&ids, before).await?;
+                let restored = client.asset(&id).await?.is_favorite;
+                Ok::<_, String>((changed, restored))
+            }
+            .await;
+            if client.asset(&id).await.map(|a| a.is_favorite) != Ok(before) {
+                client.set_favorite(&ids, before).await.unwrap();
+            }
+            let (changed, restored) = result.unwrap();
+            println!("favorite: {before} -> {changed} -> {restored}");
+            assert_eq!(changed, !before);
+            assert_eq!(restored, before);
+        });
     }
 
     /// Same listing as with the full `GET /stacks`, for an album

@@ -13,6 +13,7 @@ import { useSettingsStore } from '../../store/useSettingsStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { useDraggable } from '@dnd-kit/core';
 import ImmichStackBadge from '../immich/ImmichStackBadge';
+import ImmichFavoriteButton from '../immich/ImmichFavoriteButton';
 
 const HORIZONTAL_PADDING = 4;
 const ITEM_GAP = 8;
@@ -305,9 +306,12 @@ const FilmstripThumbnail = memo(
           </div>
         </div>
 
-        {imageFile.immich_stack && (
-          <div className="absolute top-1 left-1 z-20 pointer-events-none">
-            <ImmichStackBadge path={path} stack={imageFile.immich_stack} isRaw={imageFile.is_raw} variant="strip" />
+        {(imageFile.immich_stack || imageFile.immich_favorite) && (
+          <div className="absolute top-1 left-1 z-20 pointer-events-none flex items-start gap-1">
+            {imageFile.immich_stack && (
+              <ImmichStackBadge path={path} stack={imageFile.immich_stack} isRaw={imageFile.is_raw} variant="strip" />
+            )}
+            {imageFile.immich_favorite && <ImmichFavoriteButton path={path} favorite variant="strip" />}
           </div>
         )}
         {imageFile.immich_stack?.parent && (

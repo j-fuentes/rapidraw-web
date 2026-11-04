@@ -1000,6 +1000,7 @@ const Row = React.memo(
             aspectRatio={thumbnailAspectRatio}
             isCloudPlaceholder={image.is_cloud_placeholder}
             immichStack={image.immich_stack}
+            immichFavorite={image.immich_favorite ?? undefined}
             isRaw={image.is_raw}
           />
         </div>

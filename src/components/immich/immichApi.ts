@@ -21,6 +21,8 @@ export const ImmichInvokes = {
   PrepareExport: 'immich_prepare_export',
   RemoveFromAlbum: 'immich_remove_from_album',
   StackMembers: 'immich_stack_members',
+  SetFavorite: 'immich_set_favorite',
+  FavoritesCount: 'immich_favorites_count',
 } as const;
 
 export interface ImmichSettings {
@@ -70,6 +72,7 @@ export interface ImmichFilter {
   albumId?: string | null;
   takenFrom?: string | null;
   takenUntil?: string | null;
+  isFavorite?: boolean | null;
 }
 
 export const filterToAlbumId = (filter: ImmichFilter) =>
@@ -86,6 +89,9 @@ export const albumIdToFilter = (albumId: string): ImmichFilter => {
   }
   return { albumId: rest };
 };
+
+/** The "Favorites" source: every image marked as favorite in Immich. */
+export const IMMICH_FAVORITES_ID = filterToAlbumId({ isFavorite: true });
 
 export const immichAlbumOf = (albumId: string | null | undefined) => {
   if (!isImmichAlbumId(albumId)) return null;
@@ -118,6 +124,15 @@ export const getImmichAlbumImages = (albumId: string) =>
   invoke<ImageFile[]>(ImmichInvokes.GetImages, { filter: albumIdToFilter(albumId) });
 
 export const getImmichStackMembers = (path: string) => invoke<ImageFile[]>(ImmichInvokes.StackMembers, { path });
+
+/**
+ * Marks (favorite = true) or unmarks library entries as Immich favorites. Returns the favorite state of
+ * those entries and of the `refresh` ones (other files of their stacks) afterwards.
+ */
+export const setImmichFavorite = (paths: string[], favorite: boolean, refresh: string[] = []) =>
+  invoke<Record<string, boolean>>(ImmichInvokes.SetFavorite, { paths, favorite, refresh });
+
+export const countImmichFavorites = () => invoke<number>(ImmichInvokes.FavoritesCount);
 
 export const getImmichSyncStatus = () => invoke<ImmichSyncStatus>(ImmichInvokes.SyncStatus);
 

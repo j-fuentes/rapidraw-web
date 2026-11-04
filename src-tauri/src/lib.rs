@@ -2675,6 +2675,8 @@ pub fn run() {
             immich::commands::immich_list_albums,
             immich::commands::immich_get_images,
             immich::commands::immich_stack_members,
+            immich::commands::immich_set_favorite,
+            immich::commands::immich_favorites_count,
             immich::commands::immich_sync_status,
             immich::commands::immich_flush,
             immich::commands::immich_prepare_export,

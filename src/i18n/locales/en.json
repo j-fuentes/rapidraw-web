@@ -329,7 +329,11 @@
       "resetAdjustments_one": "Reset Adjustments",
       "resetAdjustments_other": "Reset Adjustments on {{count}} Images",
       "showExplorer": "Show in File Explorer",
-      "virtualCopy": "Virtual Copy"
+      "virtualCopy": "Virtual Copy",
+      "immichFavorite_one": "Mark as favorite in Immich",
+      "immichFavorite_other": "Mark {{count}} as favorites in Immich",
+      "immichUnfavorite_one": "Remove from Immich favorites",
+      "immichUnfavorite_other": "Remove {{count}} from Immich favorites"
     },
     "toasts": {
       "couldNotShowExplorer": "Could not show file in explorer: {{err}}",
@@ -1014,7 +1018,8 @@
       "loading": "Loading albums…",
       "refresh": "Refresh albums",
       "timeline": "Timeline",
-      "title": "Immich"
+      "title": "Immich",
+      "favorites": "Favorites"
     },
     "settings": {
       "apiKey": "API key",
@@ -1154,7 +1159,8 @@
         "all": "All Types",
         "nonRawOnly": "Non-RAW Only",
         "rawOnly": "RAW Only"
-      }
+      },
+      "immichFavorites": "Only Immich favorites"
     },
     "folders": {
       "addFolder": "Add folder",
@@ -1267,7 +1273,9 @@
       "tooltipFocalLength": "Focal Length",
       "tooltipIso": "ISO",
       "tooltipShutterSpeed": "Shutter Speed",
-      "tooltipVirtualCopy": "Virtual Copy"
+      "tooltipVirtualCopy": "Virtual Copy",
+      "immichFavoriteAdd": "Mark as favorite in Immich",
+      "immichFavoriteRemove": "Favorite in Immich: tap to unmark"
     },
     "jobs": {
       "active": "Running",

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import {
+  countImmichFavorites,
   getImmichApiKey,
   getImmichSyncStatus,
   ImmichAlbum,
@@ -16,9 +17,11 @@ interface ImmichState {
   isLoading: boolean;
   error: string | null;
   timeline: ImmichTimelineMonth[];
+  favoritesCount: number | null;
   syncStatus: ImmichSyncStatus;
   setSyncStatus(syncStatus: ImmichSyncStatus): void;
   loadTimeline(): Promise<void>;
+  loadFavoritesCount(): Promise<void>;
   refresh(): Promise<void>;
   loadAlbums(): Promise<void>;
 }
@@ -29,6 +32,7 @@ export const useImmichStore = create<ImmichState>((set, get) => ({
   isLoading: false,
   error: null,
   timeline: [],
+  favoritesCount: null,
   syncStatus: { offline: false, pending: 0 },
   setSyncStatus: (syncStatus) => set({ syncStatus }),
   loadTimeline: async () => {
@@ -36,6 +40,14 @@ export const useImmichStore = create<ImmichState>((set, get) => ({
       set({ timeline: await listImmichTimeline() });
     } catch (err) {
       console.error('Failed to load the Immich timeline:', err);
+    }
+  },
+
+  loadFavoritesCount: async () => {
+    try {
+      set({ favoritesCount: await countImmichFavorites() });
+    } catch (err) {
+      console.error('Failed to count the Immich favorites:', err);
     }
   },
 
@@ -58,6 +70,7 @@ export const useImmichStore = create<ImmichState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       set({ albums: await listImmichAlbums() });
+      get().loadFavoritesCount();
     } catch (err) {
       set({ error: String(err) });
     } finally {

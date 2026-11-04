@@ -1,12 +1,12 @@
 import { ReactNode, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import clsx from 'clsx';
-import { Album as AlbumIcon, CloudOff, CloudUpload, RefreshCw, Users } from 'lucide-react';
+import { Album as AlbumIcon, CloudOff, CloudUpload, Heart, RefreshCw, Users } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
 import Text from '../ui/Text';
 import { TextVariants, TextWeights } from '../../types/typography';
-import { toImmichAlbumId } from './immichApi';
+import { IMMICH_FAVORITES_ID, toImmichAlbumId } from './immichApi';
 import ImmichRow from './ImmichRow';
 import ImmichTimeline from './ImmichTimeline';
 import { useImmichStore } from './useImmichStore';
@@ -29,8 +29,9 @@ export default function ImmichSection({
   showImageCounts,
 }: ImmichSectionProps) {
   const { t } = useTranslation();
-  const { isConfigured, albums, isLoading, error, syncStatus, loadAlbums } = useImmichStore(
+  const { isConfigured, albums, isLoading, error, syncStatus, loadAlbums, favoritesCount } = useImmichStore(
     useShallow((state) => ({
+      favoritesCount: state.favoritesCount,
       isConfigured: state.isConfigured,
       syncStatus: state.syncStatus,
       albums: state.albums,
@@ -77,6 +78,14 @@ export default function ImmichSection({
               {!query && (
                 <>
                   <ImmichTimeline selectedAlbumId={selectedAlbumId} onSelectAlbum={onSelectAlbum} />
+                  <ImmichRow
+                    icon={Heart}
+                    label={t('immich.section.favorites')}
+                    count={favoritesCount ?? undefined}
+                    showCount={showImageCounts}
+                    isSelected={selectedAlbumId === IMMICH_FAVORITES_ID}
+                    onSelect={() => onSelectAlbum(IMMICH_FAVORITES_ID, t('immich.section.favorites'), [])}
+                  />
                   <div className="my-1 mx-2 h-px bg-surface" />
                 </>
               )}

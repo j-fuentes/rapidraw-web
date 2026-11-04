@@ -1,5 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
-import { Star, Copy, ClipboardPaste, Check, Settings, Filter, PanelLeft, PanelBottom, PanelRight } from 'lucide-react';
+import {
+  Star,
+  Copy,
+  ClipboardPaste,
+  Check,
+  Settings,
+  Filter,
+  Heart,
+  PanelLeft,
+  PanelBottom,
+  PanelRight,
+} from 'lucide-react';
 import clsx from 'clsx';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useShallow } from 'zustand/react/shallow';
@@ -23,6 +34,7 @@ import { useLibraryStore } from '../../store/useLibraryStore';
 import { useLibraryActions } from '../../hooks/useLibraryActions';
 import { useUIStore } from '../../store/useUIStore';
 import { COLOR_LABELS } from '../../utils/adjustments';
+import { isImmichAlbumId } from '../immich/immichApi';
 
 interface BottomBarProps {
   filmstripHeight?: number;
@@ -231,10 +243,11 @@ export default function BottomBar({
       },
     }));
   };
-  const { filterCriteria, setFilterCriteria } = useLibraryStore(
+  const { filterCriteria, setFilterCriteria, isImmichLibrary } = useLibraryStore(
     useShallow((state) => ({
       filterCriteria: state.filterCriteria,
       setFilterCriteria: state.setFilterCriteria,
+      isImmichLibrary: isImmichAlbumId(state.activeAlbumId),
     })),
   );
   const ratingOp = RATING_OPERATORS[filterCriteria.ratingOperator ?? 'gte'];
@@ -611,6 +624,29 @@ export default function BottomBar({
                     );
                   })}
                 </div>
+
+                {isImmichLibrary && (
+                  <>
+                    <div className="h-4 w-px bg-border-color"></div>
+                    <button
+                      className="focus:outline-none transition-transform active:scale-95 hover:scale-110"
+                      onClick={() => setFilterCriteria((prev) => ({ ...prev, immichFavorites: !prev.immichFavorites }))}
+                      data-tooltip={t('library.filters.immichFavorites')}
+                      aria-pressed={!!filterCriteria.immichFavorites}
+                      data-filter="immich-favorites"
+                    >
+                      <Heart
+                        size={16}
+                        className={clsx(
+                          'transition-colors duration-150',
+                          filterCriteria.immichFavorites
+                            ? 'text-accent fill-accent'
+                            : 'text-text-secondary hover:text-accent',
+                        )}
+                      />
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>

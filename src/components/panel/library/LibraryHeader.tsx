@@ -60,6 +60,7 @@ import Dropdown from '../../ui/Dropdown';
 import { useSettingsStore } from '../../../store/useSettingsStore';
 import { useUIStore } from '../../../store/useUIStore';
 import { ADVANCED_QUERY_REGEX } from '../../../hooks/useSortedLibrary';
+import { isImmichAlbumId } from '../../immich/immichApi';
 
 function DropdownMenu({ buttonContent, buttonTitle, children, contentClassName = 'w-56', onOpenChange }: any) {
   const [isOpen, setIsOpen] = useState(false);
@@ -551,8 +552,9 @@ export function ViewOptionsDropdown({
   sortOptions,
 }: ViewOptionsDropdownProps) {
   const { t } = useTranslation();
-  const { filterCriteria, setFilterCriteria, sortCriteria, setSortCriteria } = useLibraryStore(
+  const { filterCriteria, setFilterCriteria, sortCriteria, setSortCriteria, isImmichLibrary } = useLibraryStore(
     useShallow((state) => ({
+      isImmichLibrary: isImmichAlbumId(state.activeAlbumId),
       filterCriteria: state.filterCriteria,
       setFilterCriteria: state.setFilterCriteria,
       sortCriteria: state.sortCriteria,
@@ -575,7 +577,8 @@ export function ViewOptionsDropdown({
     (filterCriteria.rawStatus && filterCriteria.rawStatus !== RawStatus.All) ||
     (filterCriteria.editedStatus && filterCriteria.editedStatus !== EditedStatus.All) ||
     (filterCriteria.flagStatus && filterCriteria.flagStatus !== FlagStatus.All) ||
-    (filterCriteria.colors && filterCriteria.colors.length > 0);
+    (filterCriteria.colors && filterCriteria.colors.length > 0) ||
+    (isImmichLibrary && !!filterCriteria.immichFavorites);
 
   const [lastClickedColor, setLastClickedColor] = useState<string | null>(null);
   const allColors = useMemo(() => [...COLOR_LABELS, { name: 'none', color: '#9ca3af' }], []);
@@ -776,6 +779,20 @@ export function ViewOptionsDropdown({
               />
             </div>
           </div>
+
+          {isImmichLibrary && (
+            <div className="px-3">
+              <Switch
+                checked={!!filterCriteria.immichFavorites}
+                id="immich-favorites-filter-toggle"
+                label={t('library.filters.immichFavorites')}
+                onChange={(checked) =>
+                  setFilterCriteria((prev: FilterCriteria) => ({ ...prev, immichFavorites: checked }))
+                }
+                trackClassName="bg-surface"
+              />
+            </div>
+          )}
 
           <div>
             <Text as="div" variant={TextVariants.small} weight={TextWeights.semibold} className="px-3 py-1 uppercase">

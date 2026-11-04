@@ -26,6 +26,7 @@ import { useSettingsStore } from '../../../store/useSettingsStore';
 import { useLibraryStore } from '../../../store/useLibraryStore';
 import { isImmichAlbumId } from '../../immich/immichApi';
 import ImmichStackBadge from '../../immich/ImmichStackBadge';
+import ImmichFavoriteButton from '../../immich/ImmichFavoriteButton';
 import { IconAperture, IconFocalLength, IconIso, IconShutter } from '../editor/ExifIcons';
 
 const LIST_DATE_FORMAT = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
@@ -55,6 +56,7 @@ const ThumbnailComponent = ({
   isCloudPlaceholder,
   groupBadgeLabel,
   immichStack,
+  immichFavorite,
   isRaw,
   onAspectRatioLoaded,
 }: any) => {
@@ -299,14 +301,15 @@ const ThumbnailComponent = ({
         )}
       </div>
 
-      {immichStack && (
+      {(immichStack || immichFavorite !== undefined) && (
         <div
           className={clsx(
-            'absolute top-1.5 z-20 pointer-events-none',
+            'absolute top-1.5 z-20 pointer-events-none flex items-start gap-1',
             selectionModeActive ? 'left-9' : isCloudPlaceholder && layers.length > 0 ? 'left-8' : 'left-1.5',
           )}
         >
-          <ImmichStackBadge path={path} stack={immichStack} isRaw={isRaw} />
+          {immichStack && <ImmichStackBadge path={path} stack={immichStack} isRaw={isRaw} />}
+          {immichFavorite !== undefined && <ImmichFavoriteButton path={path} favorite={immichFavorite} />}
         </div>
       )}
       {immichStack?.parent && (
@@ -570,6 +573,7 @@ const ListItemComponent = ({
   isPrevSelected,
   isNextSelected,
   immichStack,
+  immichFavorite,
   isRaw,
 }: any) => {
   const { t } = useTranslation();
@@ -823,6 +827,9 @@ const ListItemComponent = ({
           {baseName}
         </Text>
         {immichStack && <ImmichStackBadge path={path} stack={immichStack} isRaw={isRaw} variant="inline" />}
+        {immichFavorite !== undefined && (
+          <ImmichFavoriteButton path={path} favorite={immichFavorite} variant="inline" />
+        )}
         {isVirtualCopy && (
           <Text
             as="div"
@@ -1082,6 +1089,7 @@ const RowComponent = ({
                 isPrevSelected={isPrevSelected}
                 isNextSelected={isNextSelected}
                 immichStack={imageFile.immich_stack}
+                immichFavorite={imageFile.immich_favorite ?? undefined}
                 isRaw={imageFile.is_raw}
               />
             ) : (
@@ -1102,6 +1110,7 @@ const RowComponent = ({
                 isCloudPlaceholder={imageFile.is_cloud_placeholder}
                 groupBadgeLabel={imageFile.group_id && groupBadgeInfo?.get(imageFile.group_id)?.label}
                 immichStack={imageFile.immich_stack}
+                immichFavorite={imageFile.immich_favorite ?? undefined}
                 isRaw={imageFile.is_raw}
                 onAspectRatioLoaded={onAspectRatioLoaded}
               />

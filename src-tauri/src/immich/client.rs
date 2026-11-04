@@ -20,6 +20,8 @@ pub struct Asset {
     pub file_modified_at: Option<String>,
     #[serde(default)]
     pub is_trashed: bool,
+    #[serde(default)]
+    pub is_favorite: bool,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -114,6 +116,11 @@ struct SearchPage {
 #[derive(Deserialize)]
 struct SearchResponse {
     assets: SearchPage,
+}
+
+#[derive(Deserialize)]
+struct SearchStatistics {
+    total: u64,
 }
 
 pub fn is_asset_id(id: &str) -> bool {
@@ -259,6 +266,38 @@ impl ImmichClient {
         Ok((result.assets.items, result.assets.next_page.is_some()))
     }
 
+    /// Number of assets matching a metadata search, without listing them.
+    pub async fn count(&self, query: Value) -> Result<u64, String> {
+        let result: SearchStatistics = self
+            .json(
+                self.request(Method::POST, "/search/statistics")
+                    .json(&query),
+                "search",
+            )
+            .await?;
+        Ok(result.total)
+    }
+
+    /// Marks (or unmarks) assets as favorites.
+    pub async fn set_favorite(&self, asset_ids: &[String], favorite: bool) -> Result<(), String> {
+        self.send(
+            self.request(Method::PUT, "/assets")
+                .json(&json!({ "ids": asset_ids, "isFavorite": favorite })),
+            "updating favorites",
+        )
+        .await
+        .map(|_| ())
+    }
+
+    #[cfg(test)]
+    pub async fn asset(&self, asset_id: &str) -> Result<Asset, String> {
+        self.json(
+            self.request(Method::GET, &format!("/assets/{asset_id}")),
+            "asset",
+        )
+        .await
+    }
+
     /// Every stack of the library with all its assets. Only for tests: on a
     /// big library this is a huge answer (35k stacks = 116 MB), so the app
     /// asks for single stacks instead.
@@ -324,22 +363,27 @@ impl ImmichClient {
 
     /// Stack of every asset shown in the timeline of an album (or of the whole
     /// library) with stacks collapsed, for the months `from`..=`until`
-    /// ("YYYY-MM", both optional). Unstacked assets map to `None`; stacked
-    /// ones appear only through their primary asset.
+    /// ("YYYY-MM", both optional), only favorites if `favorites`. Unstacked
+    /// assets map to `None`; stacked ones appear only through their primary
+    /// asset.
     pub async fn timeline_stacks(
         &self,
         album_id: Option<&str>,
         from: Option<&str>,
         until: Option<&str>,
+        favorites: bool,
     ) -> Result<HashMap<String, Option<String>>, String> {
-        let album = album_id
+        let mut params = album_id
             .map(|id| format!("&albumId={id}"))
             .unwrap_or_default();
+        if favorites {
+            params.push_str("&isFavorite=true");
+        }
         let buckets: Vec<TimelineBucketRef> = self
             .json(
                 self.request(
                     Method::GET,
-                    &format!("/timeline/buckets?withStacked=true{album}"),
+                    &format!("/timeline/buckets?withStacked=true{params}"),
                 ),
                 "timeline",
             )
@@ -358,7 +402,7 @@ impl ImmichClient {
                 self.json::<TimelineBucket>(
                     self.request(
                         Method::GET,
-                        &format!("/timeline/bucket?withStacked=true&timeBucket={bucket}{album}"),
+                        &format!("/timeline/bucket?withStacked=true&timeBucket={bucket}{params}"),
                     ),
                     "timeline",
                 )

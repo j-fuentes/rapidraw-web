@@ -1,4 +1,5 @@
 use serde::Serialize;
+use serde_json::json;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tauri::AppHandle;
@@ -129,6 +130,17 @@ pub struct ImmichImageFile {
     file: ImageFile,
     #[serde(skip_serializing_if = "Option::is_none")]
     immich_stack: Option<StackBadge>,
+    /// Immich favorite (for a stack entry: any of its files).
+    immich_favorite: bool,
+}
+
+/// The library entry (without the virtual copy suffix) of a listed path.
+fn entry_path(path: &str) -> PathBuf {
+    crate::file_management::parse_virtual_path(path).0
+}
+
+fn favorite_of(path: &str) -> bool {
+    registry::is_favorite(&entry_path(path))
 }
 
 fn member_image(member: &registry::StackMember, album_id: Option<String>) -> registry::RemoteImage {
@@ -150,16 +162,20 @@ pub async fn immich_get_images(
     let mut local_paths = Vec::new();
     let mut placeholders = Vec::new();
     let mut badges = HashMap::new();
+    let mut favorites = HashMap::new();
     for item in resolved {
         let path = item.path.to_string_lossy().into_owned();
+        favorites.insert(item.path.clone(), item.is_favorite);
         if item.path.exists() {
             local_paths.extend(virtual_copies(&item.path));
             local_paths.push(path.clone());
         } else {
             placeholders.push(placeholder_file(&path, item.file_modified_at.as_deref()));
         }
+        registry::set_favorite(&item.image.listed_asset_id, item.listed_favorite);
         if let Some(stack) = item.stack {
             for member in &stack.members {
+                registry::set_favorite(&member.asset_id, member.is_favorite);
                 registry::insert_member(
                     member.path.clone(),
                     member_image(member, stack.album_id.clone()),
@@ -189,8 +205,52 @@ pub async fn immich_get_images(
         .into_iter()
         .map(|file| ImmichImageFile {
             immich_stack: badges.get(&file.path).cloned(),
+            immich_favorite: favorites
+                .get(&entry_path(&file.path))
+                .copied()
+                .unwrap_or_else(|| favorite_of(&file.path)),
             file,
         })
+        .collect())
+}
+
+/// Number of images marked as favorites in Immich.
+#[tauri::command]
+pub async fn immich_favorites_count(app_handle: AppHandle) -> Result<u64, String> {
+    session(&app_handle)?
+        .client
+        .count(json!({ "isFavorite": true, "type": "IMAGE" }))
+        .await
+}
+
+/// Marks (or unmarks) the given library entries as Immich favorites, and
+/// returns the favorite state of the `refresh` entries afterwards (the
+/// entries and the other files of their stacks, which may change too).
+#[tauri::command]
+pub async fn immich_set_favorite(
+    paths: Vec<String>,
+    favorite: bool,
+    refresh: Vec<String>,
+    app_handle: AppHandle,
+) -> Result<HashMap<String, bool>, String> {
+    let session = session(&app_handle)?;
+    let mut ids: Vec<String> = paths
+        .iter()
+        .flat_map(|path| registry::favorite_targets(&entry_path(path), favorite))
+        .collect();
+    ids.sort();
+    ids.dedup();
+    if ids.is_empty() {
+        return Err("These images are not in Immich.".to_string());
+    }
+    session.client.set_favorite(&ids, favorite).await?;
+    for id in &ids {
+        registry::set_favorite(id, favorite);
+    }
+    Ok(paths
+        .iter()
+        .chain(refresh.iter())
+        .map(|path| (path.clone(), favorite_of(path)))
         .collect())
 }
 
@@ -234,6 +294,7 @@ pub async fn immich_stack_members(
             Some((
                 position,
                 ImmichImageFile {
+                    immich_favorite: favorite_of(&file.path),
                     immich_stack: Some(StackBadge {
                         stack_id: stack.stack_id.clone(),
                         count: stack.members.len(),

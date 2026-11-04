@@ -345,7 +345,11 @@
       "resetAdjustments_one": "Restablecer ajustes",
       "resetAdjustments_other": "Restablecer ajustes en {{count}} imágenes",
       "showExplorer": "Mostrar en el Explorador de archivos",
-      "virtualCopy": "Copia virtual"
+      "virtualCopy": "Copia virtual",
+      "immichFavorite_one": "Marcar como favorita en Immich",
+      "immichFavorite_other": "Marcar {{count}} como favoritas en Immich",
+      "immichUnfavorite_one": "Quitar de favoritas de Immich",
+      "immichUnfavorite_other": "Quitar {{count}} de favoritas de Immich"
     },
     "toasts": {
       "couldNotShowExplorer": "No se pudo mostrar el archivo en el explorador: {{err}}",
@@ -1037,7 +1041,8 @@
       "loading": "Cargando álbumes…",
       "refresh": "Actualizar álbumes",
       "timeline": "Cronología",
-      "title": "Immich"
+      "title": "Immich",
+      "favorites": "Favoritas"
     },
     "settings": {
       "apiKey": "Clave de API",
@@ -1179,7 +1184,8 @@
         "all": "Todos los tipos",
         "nonRawOnly": "Solo no RAW",
         "rawOnly": "Solo RAW"
-      }
+      },
+      "immichFavorites": "Solo favoritas de Immich"
     },
     "folders": {
       "addFolder": "Añadir carpeta",
@@ -1293,7 +1299,9 @@
       "tooltipFocalLength": "Distancia focal",
       "tooltipIso": "ISO",
       "tooltipShutterSpeed": "Velocidad de obturación",
-      "tooltipVirtualCopy": "Copia virtual"
+      "tooltipVirtualCopy": "Copia virtual",
+      "immichFavoriteAdd": "Marcar como favorita en Immich",
+      "immichFavoriteRemove": "Favorita en Immich: toca para quitarla"
     },
     "jobs": {
       "active": "En curso",

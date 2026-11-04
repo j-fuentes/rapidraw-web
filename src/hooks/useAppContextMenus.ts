@@ -80,6 +80,7 @@ import { useLibraryActions } from './useLibraryActions';
 import { transferFiles } from './useFileOperations';
 import { globalImageCache } from '../utils/ImageLRUCache';
 import { immichAlbumOf, isImmichAlbumId, removeFromImmichAlbum } from '../components/immich/immichApi';
+import { isImmichImage, setImmichFavorites } from '../components/immich/immichFavorites';
 import { useImmichStore } from '../components/immich/useImmichStore';
 
 export interface UseAppContextMenusProps {
@@ -836,6 +837,20 @@ export function useAppContextMenus(latestProps: UseAppContextMenusProps) {
           })),
         },
         buildFlagMenu(finalSelection),
+        ...(() => {
+          const immichImages = imageList.filter((image) => finalSelection.includes(image.path) && isImmichImage(image));
+          if (immichImages.length === 0) return [];
+          const allFavorites = immichImages.every((image) => image.immich_favorite);
+          return [
+            {
+              icon: Heart,
+              label: allFavorites
+                ? t('contextMenus.thumbnail.immichUnfavorite', { count: immichImages.length })
+                : t('contextMenus.thumbnail.immichFavorite', { count: immichImages.length }),
+              onClick: () => setImmichFavorites(finalSelection, !allFavorites),
+            },
+          ];
+        })(),
         {
           label: t('contextMenus.editor.colorLabel'),
           icon: Palette,

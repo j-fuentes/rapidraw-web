@@ -360,6 +360,8 @@ export interface FilterCriteria {
   rawStatus: RawStatus;
   editedStatus?: EditedStatus;
   flagStatus?: FlagStatus;
+  /** Only images marked as favorites in Immich (no effect outside Immich). */
+  immichFavorites?: boolean;
 }
 
 export interface Folder {
@@ -383,6 +385,8 @@ export interface ImageFile {
   group_id: string | null;
   needs_ai: boolean;
   immich_stack?: ImmichStackBadge | null;
+  /** Set for images listed from Immich: marked as favorite there (a stack: any of its files). */
+  immich_favorite?: boolean;
 }
 
 /// An Immich stack shown as one library entry (see immichStacks.ts).
