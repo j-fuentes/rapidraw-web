@@ -531,14 +531,26 @@ impl ImmichClient {
         .await
     }
 
+    /// Adds assets to an album. Immich answers 200 even when it doesn't add an asset (e.g. no permission on a
+    /// shared album): its per-asset results are checked, and an asset that is not in the album afterwards is an
+    /// error ("duplicate" means it already was, which is fine).
     pub async fn add_to_album(&self, album_id: &str, asset_ids: &[String]) -> Result<(), String> {
-        self.send(
-            self.request(Method::PUT, &format!("/albums/{album_id}/assets"))
-                .json(&json!({ "ids": asset_ids })),
-            "adding to album",
-        )
-        .await
-        .map(|_| ())
+        let results: Value = self
+            .json(
+                self.request(Method::PUT, &format!("/albums/{album_id}/assets"))
+                    .json(&json!({ "ids": asset_ids })),
+                "adding to album",
+            )
+            .await?;
+        let failed = not_added(&results, asset_ids);
+        if failed.is_empty() {
+            Ok(())
+        } else {
+            Err(format!(
+                "Immich did not add to the album: {}",
+                failed.join(", ")
+            ))
+        }
     }
 
     /// Albums (owned or shared with the user) that contain the asset.
@@ -636,6 +648,36 @@ impl ImmichClient {
             .map(|b| b.to_vec())
             .map_err(|e| e.to_string())
     }
+}
+
+/// Assets of an add-to-album answer (`[{id, success, error}]`) that are not in the album: failed, or missing
+/// from the answer. "duplicate" counts as added.
+pub(crate) fn not_added(results: &Value, asset_ids: &[String]) -> Vec<String> {
+    let Some(items) = results.as_array() else {
+        return asset_ids
+            .iter()
+            .map(|id| format!("{id} (unexpected answer)"))
+            .collect();
+    };
+    asset_ids
+        .iter()
+        .filter_map(|id| {
+            let item = items
+                .iter()
+                .find(|i| i.get("id").and_then(Value::as_str) == Some(id));
+            match item {
+                Some(i) if i.get("success").and_then(Value::as_bool) == Some(true) => None,
+                Some(i) if i.get("error").and_then(Value::as_str) == Some("duplicate") => None,
+                Some(i) => Some(format!(
+                    "{id} ({})",
+                    i.get("error")
+                        .and_then(Value::as_str)
+                        .unwrap_or("not added")
+                )),
+                None => Some(format!("{id} (no answer)")),
+            }
+        })
+        .collect()
 }
 
 fn mime_for(file_name: &str) -> &'static str {

@@ -276,7 +276,9 @@ pub(crate) async fn replace_original(
         ));
     }
     for (album, assets) in albums_to_replace(&in_albums, new_id) {
-        // added first, so the album never loses the photo even if removing fails
+        // Added first and checked (add_to_album fails unless the export is really in the album): the stack's other
+        // photos only leave an album that has the export, so no stack is ever left without a photo in it. This also
+        // covers exporting an "_edited" again: the previous export is a member of the stack and is replaced.
         if let Err(e) = client.add_to_album(&album, &[new_id.to_string()]).await {
             report.errors.push(format!("album {album}: {e}"));
             continue;

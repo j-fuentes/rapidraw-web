@@ -223,6 +223,41 @@ fn live_export_replaces_original_in_albums_and_favorites() {
             client.asset(&member_id).await?.is_favorite,
             "member stays favorite"
         );
+
+        // Exporting the "_edited" again: the new export replaces the previous one in both albums, the previous one
+        // stays in the stack (not deleted), and no album is left without a photo of the stack
+        let export2 = folder.join(format!("rapidraw-replace-test-{stamp}_edited-2.jpg"));
+        write_jpeg(&export2, seed.wrapping_add(11));
+        let new2 = upload_stacked(
+            &client,
+            &export2,
+            Some(original_id.clone()),
+            Some(a1.clone()),
+            true,
+        )
+        .await?
+        .expect("second export uploaded");
+        assets.push(new2.clone());
+        assert!(
+            client.asset(&new2).await?.is_favorite,
+            "second export marked favorite"
+        );
+        let in1 = client.album_asset_ids(&a1).await?;
+        let in2 = client.album_asset_ids(&a2).await?;
+        println!("after re-export: album1 {in1:?}\nalbum2 {in2:?}");
+        assert_eq!(in1, vec![new2.clone()], "album 1: only the new export");
+        assert_eq!(in2, vec![new2.clone()], "album 2: only the new export");
+        let stack = client.stack_of(&original_id).await?.expect("still stacked");
+        assert_eq!(stack.primary_asset_id, new2);
+        assert_eq!(
+            stack.assets.len(),
+            4,
+            "stack keeps every photo, previous export included"
+        );
+        assert!(
+            !client.asset(&new_id).await?.is_trashed,
+            "previous export not trashed"
+        );
         Ok::<_, String>(())
     });
 
@@ -251,4 +286,29 @@ fn live_export_replaces_original_in_albums_and_favorites() {
     EXPORT_TARGETS.lock().unwrap().remove(&folder);
     let _ = std::fs::remove_dir_all(&folder);
     result.unwrap();
+}
+
+#[test]
+fn add_to_album_answers_are_checked() {
+    use crate::immich::client::not_added;
+    let ids = vec![
+        "a".to_string(),
+        "b".to_string(),
+        "c".to_string(),
+        "d".to_string(),
+    ];
+    let answer = serde_json::json!([
+        { "id": "a", "success": true },
+        { "id": "b", "success": false, "error": "duplicate" },
+        { "id": "c", "success": false, "error": "no_permission" }
+    ]);
+    assert_eq!(
+        not_added(&answer, &ids),
+        vec!["c (no_permission)".to_string(), "d (no answer)".to_string()]
+    );
+    assert!(not_added(&answer, &ids[..2]).is_empty());
+    assert_eq!(
+        not_added(&serde_json::json!({}), &ids[..1]),
+        vec!["a (unexpected answer)".to_string()]
+    );
 }
