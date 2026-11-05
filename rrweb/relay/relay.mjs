@@ -23,7 +23,7 @@ import net from 'node:net';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { format } from 'node:util';
 import { WebSocketServer } from 'ws';
@@ -63,10 +63,21 @@ const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.
   '.wasm': 'application/wasm', '.tif': 'image/tiff', '.tiff': 'image/tiff' };
 const SPEED = randomBytes(16 << 20); // random, so a proxy or gzip can't shrink it
 const isLoopback = (a = '') => a === '127.0.0.1' || a === '::1' || a === '::ffff:127.0.0.1';
-const authed = (req) => !AUTH || req.headers.authorization === AUTH;
+// The RapidRAW app with this server as its backend (Settings → Backend → External server): its WebView can't send
+// Basic auth with a WebSocket or an <img>, so it sends the same user:pass as ?rr_auth=<base64(user:pass)> (over TLS)
+const AUTH_TOKEN = AUTH ? Buffer.from(AUTH.slice(6)) : null;
+const tokenOk = (t) => !!t && t.length === AUTH_TOKEN.length && timingSafeEqual(Buffer.from(t), AUTH_TOKEN);
+const authed = (req) => !AUTH || req.headers.authorization === AUTH
+  || tokenOk(new URL(req.url, 'http://x').searchParams.get('rr_auth'));
+// Version of the protocol on /ipc (JSON calls, binary answers [u32 LE id][bytes], events with seq/boot, the __rr_*
+// commands). The RapidRAW app checks it (GET /rr/version) before using this server as its backend.
+const PROTOCOL = 1;
 const underRoots = (p) => ROOTS.some((r) => p === r || p.startsWith(r + path.sep));
 // Browsers always send Origin: accept only our own host (or RR_ORIGINS), so another website can't reach /ipc and /fm
-const ORIGINS = (process.env.RR_ORIGINS ?? '').split(',').map((o) => o.trim()).filter(Boolean);
+// The RapidRAW app's own pages (tauri://localhost on macOS/Linux, http://tauri.localhost on Android/Windows) may
+// connect too: they still need RR_AUTH, and get CORS headers for /rr/version, /files and /fm.
+const APP_ORIGINS = ['tauri://localhost', 'http://tauri.localhost', 'https://tauri.localhost'];
+const ORIGINS = [...APP_ORIGINS, ...(process.env.RR_ORIGINS ?? '').split(',').map((o) => o.trim()).filter(Boolean)];
 function sameOrigin(req) {
   const o = req.headers.origin;
   if (!o || ORIGINS.includes(o)) return true;
@@ -83,7 +94,21 @@ function sendFile(res, file, cache) {
 }
 
 const server = http.createServer((req, res) => {
-  if (!authed(req)) { res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="RapidRAW"' }).end(); return; }
+  const origin = req.headers.origin;
+  if (origin && APP_ORIGINS.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, { 'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '600' }).end();
+      return;
+    }
+  }
+  if (!authed(req)) {
+    // the app checks the answer itself: no browser login prompt in its WebView
+    const app = (origin && APP_ORIGINS.includes(origin)) || req.url.includes('rr_auth=');
+    res.writeHead(401, app ? {} : { 'WWW-Authenticate': 'Basic realm="RapidRAW"' }).end();
+    return;
+  }
   const u = new URL(req.url, 'http://x');
   if (u.pathname === '/files') {
     let real;
@@ -95,6 +120,13 @@ const server = http.createServer((req, res) => {
   if (u.pathname.startsWith('/fm/')) {
     if (req.method !== 'GET' && !sameOrigin(req)) { res.writeHead(403).end(); return; }
     files.http(req, res, u);
+    return;
+  }
+  if (u.pathname === '/rr/version') { // the RapidRAW app checks this before using the server as its backend
+    const send = (rapidraw) => res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+      .end(JSON.stringify({ app: 'rapidraw-web', protocol: PROTOCOL, rapidraw, bridge: !!bridge }));
+    if (!bridge) { send(null); return; }
+    Promise.race([bridgeCall('plugin:app|version', {}), new Promise((_, rej) => setTimeout(rej, 5000))]).then(send, () => send(null));
     return;
   }
   if (u.pathname === '/rr/speed') { // connection speed test for the preview quality recommendation (rrweb/files/network.ts)
