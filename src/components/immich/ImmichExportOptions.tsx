@@ -18,7 +18,11 @@ export function useImmichExportChoice() {
   const settings: ImmichSettings = { ...DEFAULT_IMMICH_SETTINGS, ...immich };
   const album = settings.exportAlbum;
   const isKnown = album === 'source' || album === 'none' || albums.some((a) => a.id === album);
-  return { album: isKnown ? album : 'source', withOriginal: settings.exportWithOriginal };
+  return {
+    album: isKnown ? album : 'source',
+    withOriginal: settings.exportWithOriginal,
+    replaceOriginal: settings.exportReplaceOriginal,
+  };
 }
 
 export default function ImmichExportOptions({ disabled }: { disabled?: boolean }) {
@@ -27,7 +31,7 @@ export default function ImmichExportOptions({ disabled }: { disabled?: boolean }
   const handleSettingsChange = useSettingsStore((state) => state.handleSettingsChange);
   const albums = useImmichStore((state) => state.albums);
   const loadAlbums = useImmichStore((state) => state.loadAlbums);
-  const { album, withOriginal } = useImmichExportChoice();
+  const { album, withOriginal, replaceOriginal } = useImmichExportChoice();
 
   useEffect(() => {
     if (albums.length === 0) loadAlbums();
@@ -67,6 +71,14 @@ export default function ImmichExportOptions({ disabled }: { disabled?: boolean }
         tooltip={t('immich.export.withOriginalDesc')}
         checked={withOriginal}
         onChange={(exportWithOriginal) => change({ exportWithOriginal })}
+        disabled={disabled}
+      />
+      <Switch
+        id="immich-export-replace-original"
+        label={t('immich.export.replaceOriginal')}
+        tooltip={t('immich.export.replaceOriginalDesc')}
+        checked={replaceOriginal}
+        onChange={(exportReplaceOriginal) => change({ exportReplaceOriginal })}
         disabled={disabled}
       />
     </div>

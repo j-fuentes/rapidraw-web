@@ -30,6 +30,7 @@ export interface ImmichSettings {
   cacheLimitGb: number;
   exportAlbum: string;
   exportWithOriginal: boolean;
+  exportReplaceOriginal: boolean;
 }
 
 export const DEFAULT_IMMICH_SETTINGS: ImmichSettings = {
@@ -37,6 +38,7 @@ export const DEFAULT_IMMICH_SETTINGS: ImmichSettings = {
   cacheLimitGb: 20,
   exportAlbum: 'source',
   exportWithOriginal: true,
+  exportReplaceOriginal: true,
 };
 
 export interface ImmichApiKeyInfo {
@@ -138,5 +140,5 @@ export const getImmichSyncStatus = () => invoke<ImmichSyncStatus>(ImmichInvokes.
 
 export const flushImmichEdits = () => invoke<ImmichSyncStatus>(ImmichInvokes.Flush);
 
-export const prepareImmichExport = (album: string, withOriginal: boolean) =>
-  invoke<string>(ImmichInvokes.PrepareExport, { album, withOriginal });
+export const prepareImmichExport = (album: string, withOriginal: boolean, replaceOriginal: boolean) =>
+  invoke<string>(ImmichInvokes.PrepareExport, { album, withOriginal, replaceOriginal });

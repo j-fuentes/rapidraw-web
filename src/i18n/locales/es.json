@@ -1033,7 +1033,9 @@
       "noAlbum": "Sin álbum",
       "sourceAlbum": "Álbum desde el que se abrió la imagen",
       "withOriginal": "Subir también el original",
-      "withOriginalDesc": "Para imágenes de una carpeta local: el original se sube con sus ediciones y la exportación se apila encima. Las imágenes de Immich siempre se apilan sobre su original."
+      "withOriginalDesc": "Para imágenes de una carpeta local: el original se sube con sus ediciones y la exportación se apila encima. Las imágenes de Immich siempre se apilan sobre su original.",
+      "replaceOriginal": "Sustituir la original en álbumes y favoritas",
+      "replaceOriginalDesc": "Para imágenes de Immich: la exportación pasa a favorita si lo es la original o cualquier foto de su pila, y en cada álbum donde estén la original u otra foto de su pila, la exportación ocupa su lugar. No se borra ninguna foto ni pila; solo cambia qué hay en cada álbum."
     },
     "section": {
       "empty": "No hay álbumes en el servidor.",

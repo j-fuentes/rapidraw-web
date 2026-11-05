@@ -624,7 +624,11 @@ export default function ExportPanel({
 
       if (isImmich) {
         exportSettings.preserveFolders = false;
-        outputFolderOrFile = await prepareImmichExport(immichExport.album, immichExport.withOriginal);
+        outputFolderOrFile = await prepareImmichExport(
+          immichExport.album,
+          immichExport.withOriginal,
+          immichExport.replaceOriginal,
+        );
       } else if (isOriginalFolder) {
         outputFolderOrFile = 'originalFolderDummy';
       } else if (shouldChooseOutputFile) {

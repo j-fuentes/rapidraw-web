@@ -1010,7 +1010,9 @@
       "noAlbum": "No album",
       "sourceAlbum": "Album the image was opened from",
       "withOriginal": "Upload the original too",
-      "withOriginalDesc": "For images from a local folder: the original is uploaded with its edits and the export is stacked on top of it. Images from Immich are always stacked on their original."
+      "withOriginalDesc": "For images from a local folder: the original is uploaded with its edits and the export is stacked on top of it. Images from Immich are always stacked on their original.",
+      "replaceOriginal": "Replace the original in albums and favorites",
+      "replaceOriginalDesc": "For images from Immich: the export becomes a favorite if the original or any photo of its stack is one, and in every album with the original or another photo of its stack, the export takes their place. No photo or stack is deleted; only what is in each album changes."
     },
     "section": {
       "empty": "No albums on the server.",

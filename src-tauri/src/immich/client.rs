@@ -289,7 +289,6 @@ impl ImmichClient {
         .map(|_| ())
     }
 
-    #[cfg(test)]
     pub async fn asset(&self, asset_id: &str) -> Result<Asset, String> {
         self.json(
             self.request(Method::GET, &format!("/assets/{asset_id}")),
@@ -537,6 +536,51 @@ impl ImmichClient {
             self.request(Method::PUT, &format!("/albums/{album_id}/assets"))
                 .json(&json!({ "ids": asset_ids })),
             "adding to album",
+        )
+        .await
+        .map(|_| ())
+    }
+
+    /// Albums (owned or shared with the user) that contain the asset.
+    pub async fn albums_of(&self, asset_id: &str) -> Result<Vec<Album>, String> {
+        if !is_asset_id(asset_id) {
+            return Err(format!("Invalid asset id {asset_id}"));
+        }
+        self.json(
+            self.request(Method::GET, &format!("/albums?assetId={asset_id}")),
+            "albums of an asset",
+        )
+        .await
+    }
+
+    /// Ids of the assets in an album. Only for tests.
+    #[cfg(test)]
+    pub async fn album_asset_ids(&self, album_id: &str) -> Result<Vec<String>, String> {
+        let mut ids: Vec<String> = self
+            .search(json!({ "albumIds": [album_id] }))
+            .await?
+            .into_iter()
+            .map(|a| a.id)
+            .collect();
+        ids.sort();
+        Ok(ids)
+    }
+
+    #[cfg(test)]
+    pub async fn create_album(&self, name: &str, asset_ids: &[String]) -> Result<Album, String> {
+        self.json(
+            self.request(Method::POST, "/albums")
+                .json(&json!({ "albumName": name, "assetIds": asset_ids })),
+            "creating album",
+        )
+        .await
+    }
+
+    #[cfg(test)]
+    pub async fn delete_album(&self, album_id: &str) -> Result<(), String> {
+        self.send(
+            self.request(Method::DELETE, &format!("/albums/{album_id}")),
+            "deleting album",
         )
         .await
         .map(|_| ())

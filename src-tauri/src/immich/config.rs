@@ -12,6 +12,7 @@ pub struct ImmichSettings {
     pub cache_limit_gb: u32,
     pub export_album: String,
     pub export_with_original: bool,
+    pub export_replace_original: bool,
 }
 
 impl Default for ImmichSettings {
@@ -21,6 +22,7 @@ impl Default for ImmichSettings {
             cache_limit_gb: 20,
             export_album: "source".to_string(),
             export_with_original: true,
+            export_replace_original: true,
         }
     }
 }
